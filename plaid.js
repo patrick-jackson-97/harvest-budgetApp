@@ -246,6 +246,10 @@ async function renderPlaidConnections() {
           <div class="plaid-account-row">
             <span class="plaid-account-name">${a.name}</span>
             <span class="plaid-account-balance">${fmtFull(a.balance)}</span>
+            <button class="btn-ghost btn-xs plaid-delete-btn"
+              onclick="deletePlaidAccount('${a.id}', '${a.name.replace(/'/g,"\\'")}')">
+              <i class="fa-solid fa-trash"></i>
+            </button>
           </div>`).join('')
         : `<p class="plaid-no-connections" style="margin:4px 0 0 0;font-size:0.82rem">
              No accounts mapped yet — click Re-map accounts.
@@ -254,6 +258,30 @@ async function renderPlaidConnections() {
       <div class="plaid-inst-footer">Last synced: ${lastSync}</div>
     </div>`;
   }).join('');
+}
+
+/* ── DELETE a connected account and its Plaid transactions ── */
+async function deletePlaidAccount(accountId, accountName) {
+  if (!confirm(`Delete "${accountName}" and all its imported transactions? This cannot be undone.`)) return;
+
+  try {
+    // Delete transactions for this account
+    await sb.from('transactions').delete()
+      .eq('user_id', currentUser.id)
+      .eq('account_id', accountId)
+      .not('plaid_transaction_id', 'is', null);
+
+    // Delete the account row
+    await sb.from('accounts').delete()
+      .eq('id', accountId)
+      .eq('user_id', currentUser.id);
+
+    showQuickToast(`Deleted ${accountName}`);
+    renderPlaidConnections();
+    renderDashboard();
+  } catch (e) {
+    showQuickToast('Delete failed: ' + e.message);
+  }
 }
 
 /* ── RE-MAP: fetch accounts for an existing item and show mapping modal ── */

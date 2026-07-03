@@ -1257,11 +1257,15 @@ input, select, textarea { font-family: inherit; }
 
 .plaid-account-row {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
   font-size: 14px;
   padding: 3px 0;
   color: var(--text);
 }
+.plaid-account-row .plaid-account-balance { margin-left: auto; }
+.plaid-delete-btn { color: var(--danger, #e74c3c); opacity: 0.5; padding: 2px 6px; }
+.plaid-delete-btn:hover { opacity: 1; }
 
 .plaid-account-balance {
   color: var(--text-secondary);
