@@ -337,6 +337,7 @@ async function openAccountDrawer(account) {
       <!-- Tabs -->
       <div class="acct-drawer-tabs">
         <button class="acct-tab active" onclick="switchAcctTab('overview', this)">Overview</button>
+        <button class="acct-tab" onclick="switchAcctTab('trend', this)">Balance Trend</button>
         <button class="acct-tab" onclick="switchAcctTab('transactions', this)">Transactions</button>
         <button class="acct-tab" onclick="switchAcctTab('edit', this)">Edit</button>
       </div>
@@ -344,6 +345,11 @@ async function openAccountDrawer(account) {
       <div class="acct-drawer-body">
         <!-- OVERVIEW TAB -->
         <div id="acct-tab-overview" class="acct-tab-panel">
+          <div class="acct-detail-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div>
+        </div>
+
+        <!-- TREND TAB -->
+        <div id="acct-tab-trend" class="acct-tab-panel" style="display:none">
           <div class="acct-detail-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div>
         </div>
 
@@ -396,8 +402,9 @@ async function openAccountDrawer(account) {
   document.body.appendChild(overlay);
   requestAnimationFrame(() => overlay.querySelector('.acct-drawer').classList.add('open'));
 
-  // Load overview and transactions in parallel
+  // Load all tabs in parallel
   loadAcctOverview(account);
+  loadAcctTrend(account);
   loadAcctTransactions(account.id);
 }
 
@@ -532,7 +539,7 @@ async function loadAcctTransactions(accountId) {
   const { data: txns } = await sb.from('transactions')
     .select('date,merchant,amount,category,plaid_transaction_id')
     .eq('account_id', accountId).eq('user_id', currentUser.id)
-    .order('date', { ascending: false }).limit(50);
+    .order('date', { ascending: false }).limit(500);
 
   if (!txns || txns.length === 0) {
     panel.innerHTML = `<div class="empty-state" style="padding:40px 0"><i class="fa-solid fa-receipt"></i><p>No transactions yet</p></div>`;
@@ -555,8 +562,136 @@ async function loadAcctTransactions(accountId) {
             <div class="acct-txn-amount ${isIn ? 'pos' : 'neg'}">${isIn ? '+' : ''}${fmtFull(t.amount)}</div>
           </div>`;
       }).join('')}
-      ${txns.length === 50 ? `<div style="text-align:center;padding:12px;font-size:12px;color:var(--text-tertiary)">Showing most recent 50 · <button class="btn-link" onclick="closeAccountDrawer();showPage('expenses')">See all</button></div>` : ''}
+      ${txns.length === 500 ? `<div style="text-align:center;padding:12px;font-size:12px;color:var(--text-tertiary)">Showing most recent 500 · <button class="btn-link" onclick="closeAccountDrawer();showPage('expenses')">See all</button></div>` : ''}
     </div>`;
+}
+
+async function loadAcctTrend(account) {
+  const panel = document.getElementById('acct-tab-trend');
+  if (!panel) return;
+
+  const { data: txns } = await sb.from('transactions')
+    .select('date, amount')
+    .eq('account_id', account.id)
+    .eq('user_id', currentUser.id)
+    .order('date', { ascending: true });
+
+  if (!txns || txns.length === 0) {
+    panel.innerHTML = `<div class="empty-state" style="padding:40px 0"><i class="fa-solid fa-chart-line"></i><p>Not enough data to show a trend yet</p></div>`;
+    return;
+  }
+
+  // Compute end-of-month balances working backwards from current balance
+  const currentBal = parseFloat(account.balance) || 0;
+  const totalTxnSum = txns.reduce((s, t) => s + parseFloat(t.amount), 0);
+  let runningBal = currentBal - totalTxnSum; // balance before all transactions
+
+  // Build month buckets
+  const monthMap = {};
+  txns.forEach(t => {
+    const ym = t.date.slice(0, 7); // "2024-03"
+    runningBal += parseFloat(t.amount);
+    monthMap[ym] = runningBal; // overwrite = end-of-month value
+  });
+
+  const months = Object.keys(monthMap).sort();
+  const values = months.map(m => monthMap[m]);
+
+  const minVal = Math.min(...values);
+  const maxVal = Math.max(...values);
+  const range  = maxVal - minVal || 1;
+
+  // SVG dimensions
+  const W = 480, H = 180, PAD = { top: 16, right: 16, bottom: 32, left: 64 };
+  const chartW = W - PAD.left - PAD.right;
+  const chartH = H - PAD.top  - PAD.bottom;
+  const n = months.length;
+
+  const xScale = i  => PAD.left + (n > 1 ? (i / (n - 1)) * chartW : chartW / 2);
+  const yScale = v  => PAD.top  + chartH - ((v - minVal) / range) * chartH;
+
+  // Path
+  const pts = months.map((_, i) => `${xScale(i).toFixed(1)},${yScale(values[i]).toFixed(1)}`);
+  const linePath = `M ${pts.join(' L ')}`;
+
+  // Fill under line
+  const fillPath = `M ${xScale(0).toFixed(1)},${(PAD.top + chartH).toFixed(1)} L ${pts.join(' L ')} L ${xScale(n-1).toFixed(1)},${(PAD.top + chartH).toFixed(1)} Z`;
+
+  // Y-axis labels (3 ticks)
+  const yTicks = [minVal, minVal + range / 2, maxVal];
+  const yTicksHTML = yTicks.map(v => {
+    const y = yScale(v);
+    return `<text x="${(PAD.left - 6).toFixed(0)}" y="${y.toFixed(0)}" text-anchor="end" dominant-baseline="middle" font-size="10" fill="var(--text-tertiary)">${fmtShort(v)}</text>
+    <line x1="${PAD.left}" y1="${y.toFixed(0)}" x2="${(W - PAD.right).toFixed(0)}" y2="${y.toFixed(0)}" stroke="var(--border)" stroke-width="1" stroke-dasharray="3,3"/>`;
+  }).join('');
+
+  // X-axis labels (show up to 12, evenly spaced)
+  const maxLabels = Math.min(n, 12);
+  const step = Math.max(1, Math.floor(n / maxLabels));
+  const xTicksHTML = months.filter((_, i) => i % step === 0 || i === n - 1).map((m, _, arr) => {
+    const idx = months.indexOf(m);
+    const [yr, mo] = m.split('-');
+    const label = new Date(+yr, +mo - 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    return `<text x="${xScale(idx).toFixed(0)}" y="${(H - 6).toFixed(0)}" text-anchor="middle" font-size="10" fill="var(--text-tertiary)">${label}</text>`;
+  }).join('');
+
+  // Current balance dot + label
+  const lastX = xScale(n - 1), lastY = yScale(values[n - 1]);
+  const isDebt = isDebtAccount(account);
+  const lineColor = isDebt ? 'var(--red)' : 'var(--accent)';
+
+  const earliest = new Date(months[0] + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const latest   = new Date(months[n-1] + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  panel.innerHTML = `
+    <div class="acct-trend-header">
+      <div>
+        <div class="acct-trend-label">Balance history</div>
+        <div class="acct-trend-range">${earliest} – ${latest} · ${n} months</div>
+      </div>
+      <div style="text-align:right">
+        <div class="acct-trend-label">Change</div>
+        <div class="acct-trend-delta ${values[n-1] >= values[0] ? 'pos' : 'neg'}">
+          ${values[n-1] >= values[0] ? '+' : ''}${fmtFull(values[n-1] - values[0])}
+        </div>
+      </div>
+    </div>
+    <div class="acct-trend-chart-wrap">
+      <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">
+        <defs>
+          <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="${lineColor}" stop-opacity="0.18"/>
+            <stop offset="100%" stop-color="${lineColor}" stop-opacity="0.01"/>
+          </linearGradient>
+        </defs>
+        ${yTicksHTML}
+        <path d="${fillPath}" fill="url(#trendFill)"/>
+        <path d="${linePath}" fill="none" stroke="${lineColor}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+        <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="4" fill="${lineColor}"/>
+        ${xTicksHTML}
+      </svg>
+    </div>
+    <div class="acct-trend-months">
+      ${months.map((m, i) => {
+        const [yr, mo] = m.split('-');
+        const label = new Date(+yr, +mo - 1).toLocaleDateString('en-US', { month: 'short' });
+        const delta = i > 0 ? values[i] - values[i-1] : 0;
+        return `
+          <div class="acct-trend-month-row">
+            <span class="acct-trend-month-lbl">${label} '${yr.slice(2)}</span>
+            <span class="acct-trend-month-bal">${fmtFull(values[i])}</span>
+            ${i > 0 ? `<span class="acct-trend-month-delta ${delta >= 0 ? 'pos' : 'neg'}">${delta >= 0 ? '+' : ''}${fmtShort(delta)}</span>` : '<span></span>'}
+          </div>`;
+      }).join('')}
+    </div>`;
+}
+
+function fmtShort(n) {
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  if (abs >= 1000000) return sign + '$' + (abs / 1000000).toFixed(1) + 'M';
+  if (abs >= 1000)    return sign + '$' + (abs / 1000).toFixed(1) + 'k';
+  return sign + '$' + abs.toFixed(0);
 }
 
 function closeAccountDrawer() {
