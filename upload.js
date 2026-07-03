@@ -367,6 +367,18 @@ function showUploadPreview(instName, rows, isManual = false) {
   const income   = rows.filter(r => r.amount > 0).length;
   const total    = rows.reduce((s, r) => s + r.amount, 0);
 
+  // Build columns dynamically — only show fields that have actual data
+  const POSSIBLE_COLS = [
+    { key: 'date',         label: 'Date' },
+    { key: 'merchant',     label: 'Merchant' },
+    { key: 'amount',       label: 'Amount',   isAmount: true },
+    { key: 'raw_category', label: 'Category' },
+    { key: 'type',         label: 'Type' },
+  ];
+  const cols = POSSIBLE_COLS.filter(col =>
+    rows.some(r => r[col.key] !== null && r[col.key] !== undefined && r[col.key] !== '')
+  );
+
   result.innerHTML = `
     <div class="section">
       <div class="upload-detected">
@@ -380,16 +392,14 @@ function showUploadPreview(instName, rows, isManual = false) {
       </div>
       <div class="upload-table-wrap">
         <table class="upload-table">
-          <thead><tr><th>Date</th><th>Merchant</th><th>Amount</th><th>Category</th></tr></thead>
+          <thead><tr>${cols.map(c => `<th>${c.label}</th>`).join('')}</tr></thead>
           <tbody>
             ${rows.slice(0, 100).map(r => `
-              <tr>
-                <td>${r.date || '—'}</td>
-                <td>${r.merchant || '—'}</td>
-                <td class="${r.amount < 0 ? 'amt-neg' : 'amt-pos'}">${fmtFull(r.amount)}</td>
-                <td class="text-muted">${r.raw_category || '—'}</td>
-              </tr>`).join('')}
-            ${rows.length > 100 ? `<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:12px;font-size:13px">… and ${rows.length - 100} more rows</td></tr>` : ''}
+              <tr>${cols.map(c => {
+                if (c.isAmount) return `<td class="${r.amount < 0 ? 'amt-neg' : 'amt-pos'}">${fmtFull(r.amount)}</td>`;
+                return `<td class="${c.key === 'raw_category' || c.key === 'type' ? 'text-muted' : ''}">${r[c.key] || '—'}</td>`;
+              }).join('')}</tr>`).join('')}
+            ${rows.length > 100 ? `<tr><td colspan="${cols.length}" style="text-align:center;color:var(--text-tertiary);padding:12px;font-size:13px">… and ${rows.length - 100} more rows</td></tr>` : ''}
           </tbody>
         </table>
       </div>
