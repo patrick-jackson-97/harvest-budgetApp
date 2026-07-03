@@ -351,12 +351,40 @@ function intakeBack() {
   }
 }
 
-function finishIntake() {
-  // 'other' is always a category — add it regardless of user selection
+async function finishIntake() {
+  // 'other' is always a category
   selectedCats.add('other');
-  // In the real app this would save to Supabase.
-  // For now, update the sample data and close.
-  console.log('Intake complete:', { accounts: addedAccounts, categories: [...selectedCats] });
+
+  if (!currentUser) { hideIntake(); return; }
+
+  // Show saving state
+  const btn = document.querySelector('#intake-inner .intake-btn-primary');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…'; }
+
+  // Save accounts
+  if (addedAccounts.length > 0) {
+    const rows = addedAccounts.map(a => ({
+      user_id:     currentUser.id,
+      name:        a.name,
+      type:        a.type,
+      institution: a.institution || null,
+      balance:     parseFloat(a.balance) || 0,
+    }));
+    const { error } = await sb.from('accounts').insert(rows);
+    if (error) { console.error('Error saving accounts:', error); }
+  }
+
+  // Save user categories
+  if (selectedCats.size > 0) {
+    const catRows = [...selectedCats].map((id, i) => {
+      const meta = (typeof CAT_META !== 'undefined' && CAT_META[id]) || { label: id, icon: 'fa-solid fa-tag' };
+      return { user_id: currentUser.id, category_id: id, label: meta.label, icon: meta.icon, sort_order: i };
+    });
+    // Upsert so re-running intake doesn't error on duplicates
+    await sb.from('user_categories').upsert(catRows, { onConflict: 'user_id,category_id' });
+  }
+
   hideIntake();
   showPage('dashboard');
+  renderDashboard();
 }
