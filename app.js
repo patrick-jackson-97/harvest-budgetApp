@@ -802,19 +802,21 @@ function renderAcctTrendChart(account, months, activeWindow) {
   table.className = 'acct-trend-months';
   const headRow = document.createElement('div');
   headRow.className = 'acct-trend-month-row acct-trend-month-head';
-  headRow.innerHTML = '<span>Month</span><span>End balance</span><span>Low</span><span>Change</span>';
+  const isChecking = account.type === 'checking';
+  const primaryVals = isChecking ? minVals : endVals;
+  const primaryCol  = isChecking ? 'Monthly low' : 'End of month';
+  headRow.innerHTML = '<span>Month</span><span>' + primaryCol + '</span><span>Change</span>';
   table.appendChild(headRow);
   [...months].reverse().forEach(function(m, i) {
     const origIdx = months.length - 1 - i;
     const [yr, mo] = m.ym.split('-');
     const lbl = new Date(+yr, +mo - 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-    const delta = origIdx > 0 ? endVals[origIdx] - endVals[origIdx - 1] : null;
+    const delta = origIdx > 0 ? primaryVals[origIdx] - primaryVals[origIdx - 1] : null;
     const row = document.createElement('div');
     row.className = 'acct-trend-month-row';
     row.innerHTML =
       '<span class="acct-trend-month-lbl">' + lbl + '</span>' +
-      '<span class="acct-trend-month-bal">' + fmtFull(m.end) + '</span>' +
-      '<span class="acct-trend-month-low' + (m.min < m.end * 0.95 ? ' warn' : '') + '">' + fmtFull(m.min) + '</span>' +
+      '<span class="acct-trend-month-bal">' + fmtFull(primaryVals[origIdx]) + '</span>' +
       (delta !== null
         ? '<span class="acct-trend-month-delta ' + (delta >= 0 ? 'pos' : 'neg') + '">' + (delta >= 0 ? '+' : '') + fmtShort(delta) + '</span>'
         : '<span>—</span>');
