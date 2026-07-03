@@ -52,6 +52,13 @@ async function renderExpensesPage() {
     <div class="page-content">
       ${buildFiltersHTML()}
       <div id="bulk-bar" class="bulk-bar" style="display:none"></div>
+      <details id="cat-summary-section" class="cat-summary-section">
+        <summary class="cat-summary-toggle">
+          <i class="fa-solid fa-chart-pie"></i> Category breakdown
+          <i class="fa-solid fa-chevron-down cat-summary-chevron"></i>
+        </summary>
+        <div id="cat-summary"></div>
+      </details>
       <div id="txn-list"></div>
     </div>`;
 
@@ -173,7 +180,45 @@ function applyFiltersAndRender() {
 
   selectedTxnIds.clear();
   renderBulkBar();
+  renderCatSummary();
   renderTxnList();
+}
+
+function renderCatSummary() {
+  const el = document.getElementById('cat-summary');
+  if (!el) return;
+
+  // Only count debits (expenses) for the breakdown
+  const debits = filteredTxns.filter(t => t.type === 'debit' || parseFloat(t.amount) < 0);
+  if (!debits.length) { el.innerHTML = '<p class="cat-summary-empty">No expense transactions in current view.</p>'; return; }
+
+  const totals = {};
+  debits.forEach(t => {
+    const cat = t.category || 'other';
+    totals[cat] = (totals[cat] || 0) + Math.abs(parseFloat(t.amount));
+  });
+
+  const sorted = Object.entries(totals).sort((a, b) => b[1] - a[1]);
+  const grandTotal = sorted.reduce((s, [, v]) => s + v, 0);
+
+  el.innerHTML = `<div class="cat-summary-grid">
+    ${sorted.map(([cat, total]) => {
+      const meta = CAT_META[cat] || { label: cat, icon: 'fa-solid fa-ellipsis' };
+      const pct  = grandTotal > 0 ? (total / grandTotal * 100) : 0;
+      const count = debits.filter(t => (t.category || 'other') === cat).length;
+      return `
+        <div class="cat-summary-row" onclick="expenseFilters.category='${cat}';document.getElementById('exp-category').value='${cat}';applyFiltersAndRender()" title="Filter to ${meta.label}">
+          <div class="cat-summary-icon"><i class="${meta.icon}"></i></div>
+          <div class="cat-summary-label">${meta.label}</div>
+          <div class="cat-summary-bar-wrap">
+            <div class="cat-summary-bar" style="width:${pct.toFixed(1)}%"></div>
+          </div>
+          <div class="cat-summary-pct">${pct.toFixed(0)}%</div>
+          <div class="cat-summary-amt">${fmtFull(total)}</div>
+          <div class="cat-summary-count">${count} txn${count !== 1 ? 's' : ''}</div>
+        </div>`;
+    }).join('')}
+  </div>`;
 }
 
 function setSort(col) {
