@@ -733,9 +733,11 @@ function renderAcctTrendChart(account, months, activeWindow) {
 
   const legend = document.createElement('div');
   legend.className = 'acct-trend-legend';
+  const primaryLabel = account.type === 'checking' ? 'Monthly low' : 'End of month';
+  const secondaryLabel = account.type === 'checking' ? 'End of month' : 'Monthly low';
   legend.innerHTML =
-    '<span class="acct-trend-legend-item"><span class="acct-trend-legend-line solid" style="background:' + lineColor + '"></span>End of month</span>' +
-    '<span class="acct-trend-legend-item"><span class="acct-trend-legend-line dashed" style="border-color:' + lineColor + '"></span>Monthly low</span>' +
+    '<span class="acct-trend-legend-item"><span class="acct-trend-legend-line solid" style="background:' + lineColor + '"></span>' + primaryLabel + '</span>' +
+    '<span class="acct-trend-legend-item"><span class="acct-trend-legend-line dashed" style="border-color:' + lineColor + '"></span>' + secondaryLabel + '</span>' +
     '<span class="acct-trend-legend-delta ' + (change >= 0 ? 'pos' : 'neg') + '">' + (change >= 0 ? '▲' : '▼') + ' ' + fmtFull(Math.abs(change)) + '</span>';
   panel.appendChild(legend);
 
@@ -757,8 +759,8 @@ function renderAcctTrendChart(account, months, activeWindow) {
       labels: labels,
       datasets: [
         {
-          label: 'End of month',
-          data: endVals,
+          label: account.type === 'checking' ? 'Monthly low' : 'End of month',
+          data: account.type === 'checking' ? minVals : endVals,
           borderColor: lineColor,
           backgroundColor: lineColor + '22',
           borderWidth: 2.5,
@@ -768,8 +770,8 @@ function renderAcctTrendChart(account, months, activeWindow) {
           tension: 0.3,
         },
         {
-          label: 'Monthly low',
-          data: minVals,
+          label: account.type === 'checking' ? 'End of month' : 'Monthly low',
+          data: account.type === 'checking' ? endVals : minVals,
           borderColor: lineColor,
           backgroundColor: 'transparent',
           borderWidth: 1.5,
