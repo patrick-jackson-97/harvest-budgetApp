@@ -245,7 +245,7 @@ input, select, textarea { font-family: inherit; }
 
 /* ── ACCOUNT DRAWER ── */
 .acct-drawer-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,.35);
+  position: fixed; inset: 0; background: rgba(0,0,0,.6);
   z-index: 1000; display: flex; justify-content: flex-end;
 }
 .acct-drawer {
