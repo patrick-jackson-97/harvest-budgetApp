@@ -402,30 +402,38 @@ async function openAccountDrawer(account) {
   document.body.appendChild(overlay);
   requestAnimationFrame(() => overlay.querySelector('.acct-drawer').classList.add('open'));
 
-  // Lightweight fetch (date + amount only) for overview + trend — fast, no row limit
-  // Full transaction details are lazy-loaded when the Transactions tab is clicked
-  const [txnRes, itemsRes] = await Promise.all([
-    sb.from('transactions')
-      .select('date, amount, plaid_transaction_id')
-      .eq('account_id', account.id)
-      .eq('user_id', currentUser.id)
-      .order('date', { ascending: false }),
-    account.plaid_account_id
-      ? edgeFetch('plaid-list-items', {}).then(r => r.json()).catch(() => ({ items: [] }))
-      : Promise.resolve({ items: [] }),
-  ]);
+  // Fetch transactions only — no awaiting the Edge Function cold start
+  const { data: txns } = await sb.from('transactions')
+    .select('date, amount, plaid_transaction_id')
+    .eq('account_id', account.id)
+    .eq('user_id', currentUser.id)
+    .order('date', { ascending: false });
 
-  const txns  = txnRes.data || [];
-  const items = itemsRes.items || [];
+  const allTxns = txns || [];
 
-  populateAcctOverview(account, txns, items);
-  populateAcctTrend(account, txns);
-  // Transactions tab loaded on demand
-  document.getElementById('acct-tab-transactions')._accountId = account.id;
-  document.getElementById('acct-tab-transactions').innerHTML =
-    `<div class="acct-detail-loading" style="padding:32px 0;text-align:center;color:var(--text-tertiary);font-size:13px">
-      <i class="fa-solid fa-hand-pointer"></i> Click the Transactions tab to load
-    </div>`;
+  // Render overview and trend immediately with what we have
+  populateAcctOverview(account, allTxns, []);
+  populateAcctTrend(account, allTxns);
+
+  // Transactions tab lazy-loads on click
+  const txnPanel = document.getElementById('acct-tab-transactions');
+  txnPanel._accountId = account.id;
+  txnPanel.innerHTML = `<div style="padding:32px 0;text-align:center;color:var(--text-tertiary);font-size:13px"><i class="fa-solid fa-hand-pointer"></i> Click the Transactions tab to load</div>`;
+
+  // Plaid last-sync info loads in background and patches overview when ready
+  if (account.plaid_account_id) {
+    edgeFetch('plaid-list-items', {})
+      .then(r => r.json())
+      .then(({ items }) => {
+        const plaidItem = (items || []).find(i => i.institution_name === account.institution);
+        const el = document.getElementById('acct-overview-last-sync');
+        if (el && plaidItem?.last_synced_at) {
+          const d = new Date(plaidItem.last_synced_at);
+          el.textContent = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+      })
+      .catch(() => {});
+  }
 }
 
 function switchAcctTab(tab, btn) {
@@ -454,7 +462,7 @@ function populateAcctOverview(account, txns, items) {
   if (!panel) return;
 
   const isDebt = isDebtAccount(account);
-  const plaidItem = items.find(i => i.institution_name === account.institution);
+  const plaidItem = (items || []).find(i => i.institution_name === account.institution);
 
   const plaidTxns = txns.filter(t => t.plaid_transaction_id);
   const csvTxns   = txns.filter(t => !t.plaid_transaction_id);
@@ -467,7 +475,6 @@ function populateAcctOverview(account, txns, items) {
   // Data source section
   let dataSourceHTML = '';
   if (account.plaid_account_id) {
-    const lastSync = plaidItem?.last_synced_at ? fmtDate(plaidItem.last_synced_at.split('T')[0]) : 'Never';
     dataSourceHTML = `
       <div class="acct-info-card acct-info-plaid">
         <div class="acct-info-card-head">
@@ -475,7 +482,7 @@ function populateAcctOverview(account, txns, items) {
           <span class="acct-badge acct-badge-plaid" style="margin-left:auto">Live sync</span>
         </div>
         <div class="acct-info-row"><span>Institution</span><strong>${account.institution || '—'}</strong></div>
-        <div class="acct-info-row"><span>Last synced</span><strong>${lastSync}</strong></div>
+        <div class="acct-info-row"><span>Last synced</span><strong id="acct-overview-last-sync">…</strong></div>
         <div class="acct-info-row"><span>Plaid transactions</span><strong>${plaidTxns.length}</strong></div>
         <div class="acct-info-card-actions">
           <button class="btn-ghost btn-xs" onclick="syncPlaidNow()"><i class="fa-solid fa-rotate"></i> Sync now</button>
