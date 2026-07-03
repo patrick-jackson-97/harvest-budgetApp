@@ -402,13 +402,23 @@ async function openAccountDrawer(account) {
   document.body.appendChild(overlay);
   requestAnimationFrame(() => overlay.querySelector('.acct-drawer').classList.add('open'));
 
+  // Show account info immediately from the account object — no fetch needed for the basics
+  populateAcctOverview(account, [], []);
+
+  // Then fetch transactions with a 10s timeout
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Query timed out after 10s')), 10000)
+  );
+
   try {
-    const { data: txns, error: txnErr } = await sb.from('transactions')
+    const fetchPromise = sb.from('transactions')
       .select('date, amount, plaid_transaction_id')
       .eq('account_id', account.id)
       .eq('user_id', currentUser.id)
       .order('date', { ascending: false })
       .limit(2000);
+
+    const { data: txns, error: txnErr } = await Promise.race([fetchPromise, timeoutPromise]);
 
     if (txnErr) throw new Error(txnErr.message);
 
@@ -417,10 +427,13 @@ async function openAccountDrawer(account) {
     populateAcctTrend(account, allTxns);
   } catch(e) {
     console.error('[drawer] load error:', e);
-    ['acct-tab-overview','acct-tab-trend'].forEach(id => {
-      const p = document.getElementById(id);
-      if (p) p.innerHTML = `<div style="padding:24px;color:var(--red);font-size:13px"><i class="fa-solid fa-triangle-exclamation"></i> Failed to load: ${e.message}</div>`;
-    });
+    const p = document.getElementById('acct-tab-trend');
+    if (p) p.innerHTML = `<div style="padding:24px;color:var(--red);font-size:13px"><i class="fa-solid fa-triangle-exclamation"></i> ${e.message}</div>`;
+    const p2 = document.getElementById('acct-tab-overview');
+    if (p2) {
+      const spinner = p2.querySelector('.acct-detail-loading');
+      if (spinner) spinner.innerHTML = `<span style="color:var(--red);font-size:12px">${e.message}</span>`;
+    }
   }
 
   // Transactions tab lazy-loads on click
