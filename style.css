@@ -922,3 +922,14 @@ input, select, textarea { font-family: inherit; }
 .mapping-field { display: flex; flex-direction: column; gap: 4px; }
 .mapping-field-hint { font-size: 11px; color: var(--text-tertiary); margin: 0 0 4px; line-height: 1.4; }
 .req { color: var(--red); }
+
+/* ── Upload loading state ── */
+.upload-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+.upload-loading i { font-size: 18px; color: var(--primary); }

@@ -336,28 +336,63 @@ function processFile(file) {
   if (!file.name.toLowerCase().endsWith('.csv')) {
     showUploadError('Please upload a .csv file.'); return;
   }
+
+  // Show reading indicator immediately
+  document.getElementById('upload-result').innerHTML = `
+    <div class="upload-loading">
+      <i class="fa-solid fa-spinner fa-spin"></i>
+      <span>Reading file…</span>
+    </div>`;
+
   const reader = new FileReader();
-  reader.onload = e => handleCSVText(e.target.result);
+  reader.onload  = e => handleCSVText(e.target.result, file.name);
+  reader.onerror = () => showUploadError('Could not read the file. Please try again.');
   reader.readAsText(file);
 }
 
-function handleCSVText(text) {
-  const { headers, rows } = parseCSV(text);
-  if (!rows.length) { showUploadError('No transactions found in this file.'); return; }
+function handleCSVText(text, filename) {
+  document.getElementById('upload-result').innerHTML = `
+    <div class="upload-loading">
+      <i class="fa-solid fa-spinner fa-spin"></i>
+      <span>Parsing transactions…</span>
+    </div>`;
 
-  _rawHeaders = headers;
-  _rawRows    = rows;
+  // Yield to browser so the loading indicator renders before heavy parsing
+  setTimeout(() => {
+    try {
+      const { headers, rows } = parseCSV(text);
 
-  const inst = detectInstitution(headers);
-  uploadInstitution = inst;
+      if (!headers.length) {
+        showUploadError('This file appears to be empty or not a valid CSV.'); return;
+      }
+      if (!rows.length) {
+        showUploadError('No transaction rows found. Make sure you\'re exporting the right file from your bank.'); return;
+      }
 
-  if (inst) {
-    const lk = buildLookup(headers);
-    uploadParsed = rows.map(r => inst.normalize(r, lk)).filter(r => r.date && r.amount !== 0);
-    showUploadPreview(inst.name, uploadParsed);
-  } else {
-    showManualMapping(headers, rows);
-  }
+      _rawHeaders = headers;
+      _rawRows    = rows;
+
+      const inst = detectInstitution(headers);
+      uploadInstitution = inst;
+
+      if (inst) {
+        const lk = buildLookup(headers);
+        uploadParsed = rows.map(r => inst.normalize(r, lk)).filter(r => r.date && r.amount !== 0);
+
+        if (!uploadParsed.length) {
+          showUploadError(`Detected ${inst.name} format but couldn't parse any valid transactions. The file may be empty or use an unexpected layout.`);
+          return;
+        }
+
+        showUploadPreview(inst.name, uploadParsed);
+      } else {
+        // Show detected headers to help debug
+        showManualMapping(headers, rows);
+      }
+    } catch (err) {
+      showUploadError('Parsing failed: ' + err.message);
+    }
+  }, 50);
 }
 
 /* ── PREVIEW TABLE ── */
@@ -528,7 +563,7 @@ function applyManualMapping() {
 async function confirmImport() {
   if (!currentUser) return;
 
-  const sel = document.getElementById('upload-account-select');
+  const sel    = document.getElementById('upload-account-select');
   const acctId = sel ? sel.value : uploadAccountId;
   if (!acctId) { alert('Please select an account at the top before importing.'); return; }
   uploadAccountId = acctId;
@@ -536,28 +571,45 @@ async function confirmImport() {
   if (!uploadParsed.length) return;
 
   const btn = document.querySelector('.upload-actions .btn-primary');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Importing…'; }
+  const result = document.getElementById('upload-result');
+
+  // Show progress
+  const setProgress = (msg) => {
+    if (btn) { btn.disabled = true; btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> ${msg}`; }
+  };
+
+  setProgress('Preparing…');
 
   const rows = uploadParsed.map(r => ({
     user_id:      currentUser.id,
     account_id:   uploadAccountId,
     date:         r.date,
-    merchant:     r.merchant,
+    merchant:     r.merchant || '',
     amount:       r.amount,
     type:         r.type,
     category:     'other',
     raw_category: r.raw_category || null,
   }));
 
-  const { error } = await sb.from('transactions').insert(rows);
+  // Supabase has a row limit per request — batch in chunks of 500
+  const CHUNK = 500;
+  let imported = 0;
 
-  if (error) {
-    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-database"></i> Import transactions'; }
-    showUploadError('Import failed: ' + error.message);
-    return;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const chunk = rows.slice(i, i + CHUNK);
+    setProgress(`Importing ${Math.min(i + CHUNK, rows.length)} of ${rows.length}…`);
+
+    const { error } = await sb.from('transactions').insert(chunk);
+
+    if (error) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-database"></i> Import transactions'; }
+      showUploadError(`Import failed on row ~${i + 1}: ${error.message}<br><small>Code: ${error.code || 'unknown'} — ${error.details || ''}</small>`);
+      return;
+    }
+    imported += chunk.length;
   }
 
-  showUploadSuccess(rows.length);
+  showUploadSuccess(imported);
 }
 
 function showUploadSuccess(count) {
