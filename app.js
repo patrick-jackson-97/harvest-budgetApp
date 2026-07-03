@@ -724,7 +724,7 @@ function renderAcctTrendChart(account, months, activeWindow) {
     btn.textContent = w.label;
     btn.onclick = function() {
       const slice = w.key === 'all' ? _trendAllMonths : _trendAllMonths.slice(-parseInt(w.key));
-      renderTrendChart(_trendAccount, slice, w.key);
+      renderAcctTrendChart(_trendAccount, slice, w.key);
     };
     winDiv.appendChild(btn);
   });
