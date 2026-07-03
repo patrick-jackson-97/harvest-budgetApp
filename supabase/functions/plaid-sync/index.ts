@@ -1,5 +1,4 @@
 // HARVEST — plaid-sync (Supabase Edge Function)
-// Syncs transactions for all connected Plaid items using cursor-based pagination
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -8,11 +7,13 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const plaidUrl = (path: string) =>
+  `https://${Deno.env.get('PLAID_ENV') === 'production' ? 'production' : 'sandbox'}.plaid.com${path}`;
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {
-    // Verify user JWT
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) return json({ error: 'Unauthorized' }, 401);
 
@@ -29,7 +30,6 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    // Get all Plaid items for this user
     const { data: items } = await admin
       .from('plaid_items')
       .select('*')
@@ -39,7 +39,6 @@ Deno.serve(async (req) => {
       return json({ success: true, added: 0, message: 'No connected accounts' });
     }
 
-    // Get internal accounts for plaid_account_id → UUID mapping
     const { data: accounts } = await admin
       .from('accounts')
       .select('id, plaid_account_id')
@@ -66,7 +65,7 @@ Deno.serve(async (req) => {
         };
         if (cursor) body.cursor = cursor;
 
-        const syncRes = await fetch('https://api.plaid.com/transactions/sync', {
+        const syncRes = await fetch(plaidUrl('/transactions/sync'), {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify(body),
@@ -97,7 +96,6 @@ Deno.serve(async (req) => {
           plaid_transaction_id: t.transaction_id,
         }));
 
-        // Insert in chunks of 500, ignore duplicates
         const CHUNK = 500;
         for (let i = 0; i < rows.length; i += CHUNK) {
           await admin.from('transactions').upsert(
@@ -109,7 +107,6 @@ Deno.serve(async (req) => {
         totalAdded += rows.length;
       }
 
-      // Update cursor
       if (cursor) {
         await admin.from('plaid_items').update({
           sync_cursor:    cursor,

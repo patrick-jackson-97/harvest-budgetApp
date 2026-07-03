@@ -1457,3 +1457,103 @@ input, select, textarea { font-family: inherit; }
   text-align: center;
 }
 .login-privacy a { color: var(--text-tertiary); text-decoration: underline; }
+
+/* ============================================================
+   PLAID ACCOUNT MAPPING MODAL
+   ============================================================ */
+.plaid-map-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.plaid-map-box {
+  background: var(--bg);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+
+.plaid-map-header {
+  padding: 24px 24px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.plaid-map-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plaid-map-sub {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.plaid-map-rows {
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.plaid-map-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.plaid-map-plaid-acct {
+  flex: 1;
+  min-width: 0;
+}
+
+.plaid-map-acct-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plaid-map-acct-meta {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+.plaid-map-arrow {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.plaid-map-select {
+  flex: 1.2;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.plaid-map-footer {
+  padding: 16px 24px 24px;
+  border-top: 1px solid var(--border);
+}
+
+.plaid-map-footer .btn-primary {
+  width: 100%;
+  justify-content: center;
+}

@@ -57,11 +57,9 @@ async function initPlaidLink() {
 /* ── AFTER LINK SUCCESS ── */
 async function handlePlaidSuccess(public_token, metadata) {
   const btn = document.getElementById('plaid-connect-btn');
-
   showPlaidStatus('loading', 'Linking your account…');
 
   try {
-    // Exchange public_token server-side (keeps access_token off the browser)
     const exchangeRes = await edgeFetch('plaid-exchange-token', {
       public_token,
       institution_name: metadata.institution?.name || '',
@@ -70,27 +68,113 @@ async function handlePlaidSuccess(public_token, metadata) {
     const exchangeData = await exchangeRes.json();
     if (!exchangeData.success) throw new Error(exchangeData.error);
 
-    showPlaidStatus('loading', 'Syncing transactions…');
-
-    // Pull transactions
-    const syncRes = await edgeFetch('plaid-sync', {});
-    const syncData = await syncRes.json();
-
     setPlaidBtnLoading(btn, false);
-    showPlaidStatus('success',
-      `<strong>${metadata.institution?.name || 'Account'} connected!</strong> ` +
-      `${exchangeData.accounts_created} account${exchangeData.accounts_created !== 1 ? 's' : ''} added · ` +
-      `${syncData.added || 0} transactions imported.`
-    );
+    clearPlaidStatus();
 
-    // Refresh the connected accounts list and dashboard
-    renderPlaidConnections();
-    renderDashboard();
+    // Show account mapping modal before syncing
+    await showAccountMappingModal(exchangeData.plaid_accounts || [], metadata.institution?.name);
 
   } catch (e) {
     console.error('Plaid success handler error:', e);
     setPlaidBtnLoading(btn, false);
     showPlaidStatus('error', 'Error connecting account: ' + e.message);
+  }
+}
+
+/* ── ACCOUNT MAPPING MODAL ── */
+async function showAccountMappingModal(plaidAccounts, institutionName) {
+  // Fetch existing user accounts
+  const { data: existingAccounts } = await sb
+    .from('accounts')
+    .select('id, name, type, institution')
+    .eq('user_id', currentUser.id)
+    .is('plaid_account_id', null)
+    .order('name');
+
+  // Build modal HTML
+  const modal = document.createElement('div');
+  modal.id = 'plaid-map-modal';
+  modal.className = 'plaid-map-overlay';
+  modal.innerHTML = `
+    <div class="plaid-map-box">
+      <div class="plaid-map-header">
+        <div class="plaid-map-title"><i class="fa-solid fa-link"></i> Match your accounts</div>
+        <div class="plaid-map-sub">We found ${plaidAccounts.length} account${plaidAccounts.length !== 1 ? 's' : ''} at <strong>${institutionName || 'your bank'}</strong>.
+        Link each one to an existing account or add it as new.</div>
+      </div>
+      <div class="plaid-map-rows">
+        ${plaidAccounts.map((a, i) => `
+          <div class="plaid-map-row">
+            <div class="plaid-map-plaid-acct">
+              <div class="plaid-map-acct-name">${a.name}</div>
+              <div class="plaid-map-acct-meta">${a.type} · ${fmtFull(a.balance)}</div>
+            </div>
+            <i class="fa-solid fa-arrow-right plaid-map-arrow"></i>
+            <select class="form-select plaid-map-select" data-plaid-idx="${i}">
+              <option value="new">+ Add as new account</option>
+              ${(existingAccounts || []).map(e =>
+                `<option value="${e.id}">${e.name} (${e.type})</option>`
+              ).join('')}
+              <option value="skip">Skip / ignore</option>
+            </select>
+          </div>`).join('')}
+      </div>
+      <div class="plaid-map-footer">
+        <button class="btn-primary" onclick="confirmAccountMapping()">
+          <i class="fa-solid fa-check"></i> Confirm & sync transactions
+        </button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modal);
+  window._plaidAccountsToMap = plaidAccounts;
+}
+
+async function confirmAccountMapping() {
+  const modal = document.getElementById('plaid-map-modal');
+  const selects = modal.querySelectorAll('.plaid-map-select');
+  const plaidAccounts = window._plaidAccountsToMap || [];
+
+  const mappings = Array.from(selects).map((sel, i) => {
+    const val = sel.value;
+    const a = plaidAccounts[i];
+    if (val === 'new') {
+      return { ...a, action: 'new' };
+    } else if (val === 'skip') {
+      return { ...a, action: 'skip' };
+    } else {
+      return { ...a, action: 'link', existing_account_id: val };
+    }
+  });
+
+  // Show loading state
+  modal.querySelector('.btn-primary').disabled = true;
+  modal.querySelector('.btn-primary').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
+
+  try {
+    await edgeFetch('plaid-save-accounts', { mappings });
+
+    // Now sync transactions
+    modal.querySelector('.btn-primary').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Syncing transactions…';
+    const syncRes = await edgeFetch('plaid-sync', {});
+    const syncData = await syncRes.json();
+
+    modal.remove();
+    showPlaidStatus('success',
+      `<strong>Connected!</strong> ${syncData.added || 0} transactions imported.`
+    );
+
+    renderPlaidConnections().then(() => {
+      const syncRow = document.getElementById('plaid-sync-row');
+      if (syncRow) syncRow.style.display = 'flex';
+    });
+    renderDashboard();
+
+  } catch (e) {
+    console.error('Account mapping error:', e);
+    modal.querySelector('.btn-primary').disabled = false;
+    modal.querySelector('.btn-primary').innerHTML = '<i class="fa-solid fa-check"></i> Confirm & sync transactions';
+    showQuickToast('Error saving accounts: ' + e.message);
   }
 }
 

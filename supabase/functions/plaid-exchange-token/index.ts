@@ -1,5 +1,4 @@
 // HARVEST — plaid-exchange-token (Supabase Edge Function)
-// Exchanges public_token for access_token, stores it, creates accounts
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -8,11 +7,13 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const plaidUrl = (path: string) =>
+  `https://${Deno.env.get('PLAID_ENV') === 'production' ? 'production' : 'sandbox'}.plaid.com${path}`;
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {
-    // Verify user JWT
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) return json({ error: 'Unauthorized' }, 401);
 
@@ -24,7 +25,6 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authErr } = await sb.auth.getUser();
     if (authErr || !user) return json({ error: 'Unauthorized' }, 401);
 
-    // Admin client for plaid_items (bypasses RLS — access_token never leaves server)
     const admin = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -33,8 +33,7 @@ Deno.serve(async (req) => {
     const { public_token, institution_name, institution_id } = await req.json();
     if (!public_token) return json({ error: 'public_token required' }, 400);
 
-    // Exchange public_token for access_token
-    const exchangeRes = await fetch('https://api.plaid.com/item/public_token/exchange', {
+    const exchangeRes = await fetch(plaidUrl('/item/public_token/exchange'), {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -48,14 +47,12 @@ Deno.serve(async (req) => {
 
     const { access_token, item_id } = exchangeData;
 
-    // Store item (server-side only, no user RLS on plaid_items)
     await admin.from('plaid_items').upsert(
       { user_id: user.id, item_id, access_token, institution_name, institution_id },
       { onConflict: 'item_id' }
     );
 
-    // Fetch Plaid accounts and upsert into our accounts table
-    const acctRes = await fetch('https://api.plaid.com/accounts/get', {
+    const acctRes = await fetch(plaidUrl('/accounts/get'), {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -66,20 +63,16 @@ Deno.serve(async (req) => {
     });
     const { accounts } = await acctRes.json();
 
-    const accountRows = (accounts || []).map((a: any) => ({
-      user_id:          user.id,
+    // Return Plaid accounts to the client for mapping — don't save yet
+    const plaidAccounts = (accounts || []).map((a: any) => ({
+      plaid_account_id: a.account_id,
       name:             a.official_name || a.name,
       type:             mapPlaidType(a.type, a.subtype),
-      institution:      institution_name || null,
       balance:          a.balances.current ?? 0,
-      plaid_account_id: a.account_id,
+      institution:      institution_name || null,
     }));
 
-    if (accountRows.length > 0) {
-      await admin.from('accounts').upsert(accountRows, { onConflict: 'plaid_account_id' });
-    }
-
-    return json({ success: true, item_id, accounts_created: accountRows.length });
+    return json({ success: true, item_id, plaid_accounts: plaidAccounts });
   } catch (e) {
     console.error('plaid-exchange-token error:', e);
     return json({ error: e.message }, 500);

@@ -1,5 +1,4 @@
 // HARVEST — plaid-create-link-token (Supabase Edge Function)
-// Creates a Plaid Link token after verifying the user's JWT
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -8,13 +7,13 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const plaidUrl = (path: string) =>
+  `https://${Deno.env.get('PLAID_ENV') === 'production' ? 'production' : 'sandbox'}.plaid.com${path}`;
+
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: CORS });
-  }
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
 
   try {
-    // Verify the caller is an authenticated Harvest user
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) return json({ error: 'Unauthorized' }, 401);
 
@@ -26,8 +25,7 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authErr } = await sb.auth.getUser();
     if (authErr || !user) return json({ error: 'Unauthorized' }, 401);
 
-    // Create Plaid link token
-    const plaidRes = await fetch('https://api.plaid.com/link/token/create', {
+    const plaidRes = await fetch(plaidUrl('/link/token/create'), {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
