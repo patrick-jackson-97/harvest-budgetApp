@@ -127,7 +127,19 @@ Deno.serve(async (req) => {
       }
     }
 
-    return json({ success: true, added: totalAdded });
+    // Clean up orphaned Plaid transactions (account not mapped — duplicates or from
+    // disconnected/unmapped connections). CSV transactions are safe: they have no
+    // plaid_transaction_id so they won't be touched.
+    const { count: removed } = await admin
+      .from('transactions')
+      .delete({ count: 'exact' })
+      .eq('user_id', user.id)
+      .is('account_id', null)
+      .not('plaid_transaction_id', 'is', null);
+
+    if (removed) console.log(`Cleaned up ${removed} orphaned Plaid transactions`);
+
+    return json({ success: true, added: totalAdded, removed: removed || 0 });
   } catch (e) {
     console.error('plaid-sync error:', e);
     return json({ error: e.message }, 500);

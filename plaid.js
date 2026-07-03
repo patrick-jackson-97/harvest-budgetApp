@@ -189,7 +189,9 @@ async function syncPlaidNow() {
     const data = await res.json();
 
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Sync now'; }
-    showQuickToast(`Synced: ${data.added || 0} new transaction${data.added !== 1 ? 's' : ''}`);
+    const msg = `Synced: ${data.added || 0} new transaction${data.added !== 1 ? 's' : ''}` +
+      (data.removed ? ` · ${data.removed} duplicate${data.removed !== 1 ? 's' : ''} removed` : '');
+    showQuickToast(msg);
     if ((data.added || 0) > 0 && document.getElementById('page-expenses')?.classList.contains('active')) {
       renderExpensesPage();
     }
