@@ -726,7 +726,7 @@ function renderTrendChart(account, months, activeWindow) {
     { key: 'all', label: 'All' },
   ];
 
-  panel.innerHTML = `
+  const _html = `
     <div class="acct-trend-header">
       <div>
         <div class="acct-trend-range">${earliest} – ${latest} · ${n} months</div>
@@ -780,6 +780,9 @@ function renderTrendChart(account, months, activeWindow) {
           </div>`;
       }).join('')}
     </div>`;
+  console.log('[chart] html length:', _html.length, 'first 100:', _html.substring(0, 100));
+  panel.innerHTML = _html;
+  console.log('[chart] panel after set:', panel.innerHTML.length);
 }
 
 function fmtShort(n) {
