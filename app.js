@@ -957,8 +957,8 @@ async function renderBudgetPage() {
     { data: transactions },
     { data: userCats }
   ] = await Promise.all([
-    sb.from('budgets').select('*').eq('user_id', currentUser.id).eq('month', budgetMonth),
-    sb.from('income_goals').select('*').eq('user_id', currentUser.id).eq('month', budgetMonth),
+    sb.from('budgets').select('*').eq('user_id', currentUser.id).eq('month', '0000-00'),
+    sb.from('income_goals').select('*').eq('user_id', currentUser.id).eq('month', '0000-00'),
     sb.from('transactions').select('*').eq('user_id', currentUser.id)
       .gte('date', budgetMonth + '-01').lt('date', offsetYM(budgetMonth, 1) + '-01'),
     sb.from('user_categories').select('*').eq('user_id', currentUser.id).order('sort_order'),
@@ -967,19 +967,25 @@ async function renderBudgetPage() {
   // Exclude CC payments and savings/investing transfers — money moving between your
   // own accounts, not real income or spending.
   const EXCLUDE_CATS = new Set(['cc_payment', 'savings_cat']);
+  const INCOME_CATS  = new Set(['income']);
   const realTxns = (transactions || []).filter(t => !EXCLUDE_CATS.has(t.category));
 
-  const incomeTxns = realTxns.filter(t => parseFloat(t.amount) > 0);
+  // Income = only transactions explicitly categorized as income
+  const incomeTxns   = realTxns.filter(t => INCOME_CATS.has(t.category) && parseFloat(t.amount) > 0);
   const actualIncome = incomeTxns.reduce((s, t) => s + parseFloat(t.amount), 0);
 
   const incomeGoal = (incomeGoals || []).reduce((s, g) => s + parseFloat(g.goal), 0);
 
-  const spendTxns = realTxns.filter(t => parseFloat(t.amount) < 0);
+  // Spend = all non-income transactions; positives (refunds) net against the category
+  const spendTxns  = realTxns.filter(t => !INCOME_CATS.has(t.category));
   const spendByCat = {};
   spendTxns.forEach(t => {
     const cat = t.category || 'other';
-    spendByCat[cat] = (spendByCat[cat] || 0) + Math.abs(parseFloat(t.amount));
+    const amt = parseFloat(t.amount);  // negative = spend, positive = refund
+    spendByCat[cat] = (spendByCat[cat] || 0) - amt;  // negate so spend is positive
   });
+  // Remove categories where refunds exceeded spend (net negative)
+  Object.keys(spendByCat).forEach(k => { if (spendByCat[k] <= 0) delete spendByCat[k]; });
 
   const totalSpend = Object.values(spendByCat).reduce((s, v) => s + v, 0);
   const totalGoal  = (budgets || []).reduce((s, b) => s + parseFloat(b.goal), 0);
@@ -1130,7 +1136,7 @@ async function saveBudgetGoals() {
   inputs.forEach(input => {
     const cat  = input.dataset.cat;
     const goal = parseFloat(input.value) || 0;
-    if (goal > 0) upserts.push({ user_id: currentUser.id, month: budgetMonth, category: cat, goal });
+    if (goal > 0) upserts.push({ user_id: currentUser.id, month: '0000-00', category: cat, goal });
   });
   if (upserts.length === 0) return;
   const { error } = await sb.from('budgets').upsert(upserts, { onConflict: 'user_id,month,category' });
@@ -1142,7 +1148,7 @@ async function updateIncomeGoal(value) {
   const goal = parseFloat(value) || 0;
   if (goal <= 0) return;
   await sb.from('income_goals').upsert(
-    { user_id: currentUser.id, month: budgetMonth, source: 'Primary', goal },
+    { user_id: currentUser.id, month: '0000-00', source: 'Primary', goal },
     { onConflict: 'user_id,month,source' }
   );
 }
