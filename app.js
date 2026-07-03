@@ -155,6 +155,7 @@ function showPage(page) {
   if (page === 'budget')    renderBudgetPage();
   if (page === 'upload')    { renderUploadPage(); populateAccountSelect(); }
   if (page === 'expenses')  renderExpensesPage();
+  if (page === 'security')  renderSecurityPage();
 }
 
 /* ============================================================
@@ -532,4 +533,225 @@ async function updateIncomeGoal(value) {
     { user_id: currentUser.id, month: budgetMonth, source: 'Primary', goal },
     { onConflict: 'user_id,month,source' }
   );
+}
+
+/* ============================================================
+   SECURITY & PRIVACY PAGE
+   ============================================================ */
+function renderSecurityPage() {
+  const page = document.getElementById('page-security');
+  if (!page) return;
+
+  page.innerHTML = `
+    <div class="page-topbar">
+      <div class="page-topbar-left">
+        <h1>Security & Privacy</h1>
+        <p>How Harvest protects your data and what each service does</p>
+      </div>
+    </div>
+    <div class="page-content">
+
+      <div class="sec-hero">
+        <i class="fa-solid fa-shield-halved sec-hero-icon"></i>
+        <div>
+          <div class="sec-hero-title">Your data stays yours</div>
+          <div class="sec-hero-sub">Harvest never sells your data, never stores bank credentials, and never accesses your accounts beyond what you explicitly authorize.</div>
+        </div>
+      </div>
+
+      <!-- PLAID -->
+      <div class="sec-section">
+        <div class="sec-section-header">
+          <div class="sec-badge sec-badge-plaid"><i class="fa-solid fa-link"></i></div>
+          <div>
+            <div class="sec-section-title">Plaid — Bank Connections</div>
+            <div class="sec-section-sub">plaid.com</div>
+          </div>
+        </div>
+        <div class="sec-cards">
+          <div class="sec-card sec-good">
+            <i class="fa-solid fa-circle-check"></i>
+            <div>
+              <strong>Read-only access</strong>
+              Plaid connects to your bank in read-only mode. It cannot move money, initiate transfers, or make any changes to your accounts.
+            </div>
+          </div>
+          <div class="sec-card sec-good">
+            <i class="fa-solid fa-circle-check"></i>
+            <div>
+              <strong>Bank credentials never stored</strong>
+              When you log into your bank through Plaid Link, your username and password go directly to your bank. Harvest never sees them.
+            </div>
+          </div>
+          <div class="sec-card sec-good">
+            <i class="fa-solid fa-circle-check"></i>
+            <div>
+              <strong>Access token stored server-side only</strong>
+              Plaid gives Harvest an opaque access token after you connect. This token is stored in Supabase and only ever read by the server — it is never sent to your browser.
+            </div>
+          </div>
+          <div class="sec-card sec-neutral">
+            <i class="fa-solid fa-circle-info"></i>
+            <div>
+              <strong>What Plaid can see</strong>
+              Plaid has access to your account balances, transaction history, and account metadata (name, type, last 4 digits). It does not have access to statements, routing numbers, or full account numbers.
+            </div>
+          </div>
+          <div class="sec-card sec-neutral">
+            <i class="fa-solid fa-circle-info"></i>
+            <div>
+              <strong>Revoking access</strong>
+              You can disconnect any bank at any time. Harvest will delete the access token from Supabase, and Plaid will revoke its connection to that institution.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUPABASE -->
+      <div class="sec-section">
+        <div class="sec-section-header">
+          <div class="sec-badge sec-badge-supabase"><i class="fa-solid fa-database"></i></div>
+          <div>
+            <div class="sec-section-title">Supabase — Database & Auth</div>
+            <div class="sec-section-sub">supabase.com · hosted on AWS</div>
+          </div>
+        </div>
+        <div class="sec-cards">
+          <div class="sec-card sec-good">
+            <i class="fa-solid fa-circle-check"></i>
+            <div>
+              <strong>Row Level Security on every table</strong>
+              Every database table has RLS enforced. Queries automatically filter to <code>auth.uid() = user_id</code> — no query can return another user's data, even if someone had your API key.
+            </div>
+          </div>
+          <div class="sec-card sec-good">
+            <i class="fa-solid fa-circle-check"></i>
+            <div>
+              <strong>No passwords stored</strong>
+              Authentication uses magic links only. Supabase never stores a password for your account, so there is nothing to leak if their database were ever breached.
+            </div>
+          </div>
+          <div class="sec-card sec-good">
+            <i class="fa-solid fa-circle-check"></i>
+            <div>
+              <strong>Encryption at rest and in transit</strong>
+              All data is encrypted at rest (AES-256) and in transit (TLS 1.2+). This is managed by Supabase and the underlying AWS infrastructure.
+            </div>
+          </div>
+          <div class="sec-card sec-neutral">
+            <i class="fa-solid fa-circle-info"></i>
+            <div>
+              <strong>What Supabase stores</strong>
+              Your email address, transaction history, account names and balances, budget goals, and Plaid access tokens (server-side only). No bank credentials, no Social Security numbers, no full account numbers.
+            </div>
+          </div>
+          <div class="sec-card sec-neutral">
+            <i class="fa-solid fa-circle-info"></i>
+            <div>
+              <strong>The anon key is intentionally public</strong>
+              The Supabase "anon key" embedded in the app's JavaScript is designed to be public. It grants no data access on its own — RLS ensures every request must be authenticated.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VERCEL -->
+      <div class="sec-section">
+        <div class="sec-section-header">
+          <div class="sec-badge sec-badge-vercel"><i class="fa-solid fa-server"></i></div>
+          <div>
+            <div class="sec-section-title">Vercel — Hosting & API</div>
+            <div class="sec-section-sub">vercel.com · hosted on AWS/Cloudflare</div>
+          </div>
+        </div>
+        <div class="sec-cards">
+          <div class="sec-card sec-good">
+            <i class="fa-solid fa-circle-check"></i>
+            <div>
+              <strong>Secrets never reach the browser</strong>
+              Your Plaid secret and Supabase service role key live in Vercel's encrypted environment variable store. They are only available inside serverless functions — your browser never sees them.
+            </div>
+          </div>
+          <div class="sec-card sec-good">
+            <i class="fa-solid fa-circle-check"></i>
+            <div>
+              <strong>HTTPS enforced</strong>
+              All traffic to harvest-budget-app.vercel.app is served over HTTPS with automatic TLS certificates. HTTP requests are redirected automatically.
+            </div>
+          </div>
+          <div class="sec-card sec-neutral">
+            <i class="fa-solid fa-circle-info"></i>
+            <div>
+              <strong>Serverless functions are ephemeral</strong>
+              The API routes that talk to Plaid and Supabase run in short-lived serverless functions. No data is held in memory between requests.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AUTH -->
+      <div class="sec-section">
+        <div class="sec-section-header">
+          <div class="sec-badge sec-badge-auth"><i class="fa-solid fa-envelope"></i></div>
+          <div>
+            <div class="sec-section-title">Authentication — Magic Links</div>
+            <div class="sec-section-sub">Powered by Supabase Auth</div>
+          </div>
+        </div>
+        <div class="sec-cards">
+          <div class="sec-card sec-good">
+            <i class="fa-solid fa-circle-check"></i>
+            <div>
+              <strong>No password to steal</strong>
+              Sign-in is email-only via a one-time link. There is no password that can be phished, reused, or breached.
+            </div>
+          </div>
+          <div class="sec-card sec-good">
+            <i class="fa-solid fa-circle-check"></i>
+            <div>
+              <strong>Links expire in 1 hour</strong>
+              Magic links are single-use and expire after 60 minutes. A link that has already been clicked cannot be reused.
+            </div>
+          </div>
+          <div class="sec-card sec-good">
+            <i class="fa-solid fa-circle-check"></i>
+            <div>
+              <strong>Session tokens are scoped</strong>
+              Your session JWT is stored in browser memory and scoped to this app's origin. It cannot be read by other websites or browser extensions.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- WHAT WE DON'T DO -->
+      <div class="sec-section">
+        <div class="sec-section-header">
+          <div class="sec-badge sec-badge-never"><i class="fa-solid fa-ban"></i></div>
+          <div>
+            <div class="sec-section-title">What Harvest never does</div>
+            <div class="sec-section-sub"></div>
+          </div>
+        </div>
+        <div class="sec-cards">
+          ${[
+            'Sell or share your financial data with third parties',
+            'Store your bank username or password',
+            'Move money or initiate any transactions',
+            'Access accounts you haven\'t explicitly connected',
+            'Store full bank account or routing numbers',
+            'Display ads or use your data for targeting',
+          ].map(item => `
+          <div class="sec-card sec-never">
+            <i class="fa-solid fa-xmark"></i>
+            <div>${item}</div>
+          </div>`).join('')}
+        </div>
+      </div>
+
+      <div class="sec-footer">
+        <i class="fa-solid fa-circle-info"></i>
+        Questions about data handling? This app is self-hosted and privately operated — you own the Supabase project and control all data.
+      </div>
+
+    </div>`;
 }
