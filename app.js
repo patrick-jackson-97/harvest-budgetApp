@@ -297,63 +297,264 @@ function renderAccountCards(accounts) {
 }
 
 /* ── ACCOUNT DETAIL / EDIT DRAWER ── */
-function openAccountDrawer(account) {
+async function openAccountDrawer(account) {
   const existing = document.getElementById('acct-drawer-overlay');
   if (existing) existing.remove();
 
   const isDebt = isDebtAccount(account);
+  const meta   = TYPE_META[account.type] || {};
+  const bal    = parseFloat(account.balance) || 0;
+
   const overlay = document.createElement('div');
   overlay.id = 'acct-drawer-overlay';
   overlay.className = 'acct-drawer-overlay';
   overlay.onclick = e => { if (e.target === overlay) closeAccountDrawer(); };
 
   overlay.innerHTML = `
-    <div class="acct-drawer">
+    <div class="acct-drawer acct-drawer-wide">
       <div class="acct-drawer-header">
-        <div class="acct-drawer-title">${account.name}</div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="account-card-icon ${meta.iconClass || ''}" style="margin:0;width:32px;height:32px;font-size:14px;flex-shrink:0">
+            <i class="${meta.icon || 'fa-solid fa-wallet'}"></i>
+          </div>
+          <div>
+            <div class="acct-drawer-title">${account.name}</div>
+            <div style="font-size:12px;color:var(--text-tertiary)">${account.institution || meta.label || ''}</div>
+          </div>
+        </div>
         <button class="btn-ghost btn-xs" onclick="closeAccountDrawer()"><i class="fa-solid fa-xmark"></i></button>
       </div>
+
+      <!-- Balance hero -->
+      <div class="acct-drawer-balance-hero">
+        <div class="acct-drawer-balance-label">Current Balance</div>
+        <div class="acct-drawer-balance-value ${isDebt ? 'liability' : 'asset'}">${isDebt ? '-' : ''}${fmtFull(Math.abs(bal))}</div>
+        ${account.exclude_from_net_worth ? '<div class="acct-excluded-tag" style="display:inline-block;margin-top:6px">excluded from net worth</div>' : ''}
+      </div>
+
+      <!-- Tabs -->
+      <div class="acct-drawer-tabs">
+        <button class="acct-tab active" onclick="switchAcctTab('overview', this)">Overview</button>
+        <button class="acct-tab" onclick="switchAcctTab('transactions', this)">Transactions</button>
+        <button class="acct-tab" onclick="switchAcctTab('edit', this)">Edit</button>
+      </div>
+
       <div class="acct-drawer-body">
-        <div class="form-group">
-          <label class="form-label">Account name</label>
-          <input class="form-input" id="edit-acct-name" value="${account.name}">
+        <!-- OVERVIEW TAB -->
+        <div id="acct-tab-overview" class="acct-tab-panel">
+          <div class="acct-detail-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Institution</label>
-          <input class="form-input" id="edit-acct-institution" value="${account.institution || ''}">
+
+        <!-- TRANSACTIONS TAB -->
+        <div id="acct-tab-transactions" class="acct-tab-panel" style="display:none">
+          <div class="acct-detail-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Type</label>
-          <select class="form-select" id="edit-acct-type">
-            ${Object.entries(TYPE_META).map(([k,v]) =>
-              `<option value="${k}" ${account.type===k?'selected':''}>${v.label}</option>`
-            ).join('')}
-          </select>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Current balance</label>
-          <input class="form-input" id="edit-acct-balance" type="number" step="0.01" value="${Math.abs(parseFloat(account.balance)||0)}">
-        </div>
-        ${isDebt ? `
-        <div class="acct-drawer-toggle">
-          <label class="toggle-label">
-            <input type="checkbox" id="edit-acct-exclude" ${account.exclude_from_net_worth ? 'checked' : ''}>
-            <span class="toggle-track"></span>
-            <span class="toggle-text">Exclude from net worth</span>
-          </label>
-          <p class="toggle-hint">Use this when the corresponding asset (car, home) isn't tracked here — so the loan doesn't unfairly reduce your net worth.</p>
-        </div>` : ''}
-        <div class="acct-drawer-footer">
-          <button class="btn-secondary" onclick="closeAccountDrawer()">Cancel</button>
-          <button class="btn-primary" onclick="saveAccountEdits('${account.id}')">
-            <i class="fa-solid fa-check"></i> Save changes
-          </button>
+
+        <!-- EDIT TAB -->
+        <div id="acct-tab-edit" class="acct-tab-panel" style="display:none">
+          <div class="form-group">
+            <label class="form-label">Account name</label>
+            <input class="form-input" id="edit-acct-name" value="${account.name}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Institution</label>
+            <input class="form-input" id="edit-acct-institution" value="${account.institution || ''}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Type</label>
+            <select class="form-select" id="edit-acct-type">
+              ${Object.entries(TYPE_META).map(([k,v]) =>
+                `<option value="${k}" ${account.type===k?'selected':''}>${v.label}</option>`
+              ).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Current balance</label>
+            <input class="form-input" id="edit-acct-balance" type="number" step="0.01" value="${Math.abs(bal)}">
+          </div>
+          ${isDebt ? `
+          <div class="acct-drawer-toggle">
+            <label class="toggle-label">
+              <input type="checkbox" id="edit-acct-exclude" ${account.exclude_from_net_worth ? 'checked' : ''}>
+              <span class="toggle-track"></span>
+              <span class="toggle-text">Exclude from net worth</span>
+            </label>
+            <p class="toggle-hint">Use when the asset this loan is against (car, home) isn't tracked in Harvest — prevents the debt from unfairly reducing your net worth.</p>
+          </div>` : ''}
+          <div class="acct-drawer-footer">
+            <button class="btn-secondary btn-sm" onclick="closeAccountDrawer()">Cancel</button>
+            <button class="btn-primary btn-sm" onclick="saveAccountEdits('${account.id}')">
+              <i class="fa-solid fa-check"></i> Save changes
+            </button>
+          </div>
         </div>
       </div>
     </div>`;
 
   document.body.appendChild(overlay);
   requestAnimationFrame(() => overlay.querySelector('.acct-drawer').classList.add('open'));
+
+  // Load overview and transactions in parallel
+  loadAcctOverview(account);
+  loadAcctTransactions(account.id);
+}
+
+function switchAcctTab(tab, btn) {
+  document.querySelectorAll('.acct-tab-panel').forEach(p => p.style.display = 'none');
+  document.querySelectorAll('.acct-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById(`acct-tab-${tab}`).style.display = 'block';
+  btn.classList.add('active');
+}
+
+async function loadAcctOverview(account) {
+  const panel = document.getElementById('acct-tab-overview');
+  if (!panel) return;
+
+  const isDebt = isDebtAccount(account);
+
+  // Fetch transaction summary + plaid item info in parallel
+  const [txnRes, itemsRes] = await Promise.all([
+    sb.from('transactions').select('date, amount, plaid_transaction_id').eq('account_id', account.id).eq('user_id', currentUser.id).order('date', { ascending: false }),
+    account.plaid_account_id
+      ? edgeFetch('plaid-list-items', {}).then(r => r.json()).catch(() => ({ items: [] }))
+      : Promise.resolve({ items: [] }),
+  ]);
+
+  const txns  = txnRes.data || [];
+  const items = itemsRes.items || [];
+  const plaidItem = items.find(i => i.institution_name === account.institution);
+
+  const plaidTxns = txns.filter(t => t.plaid_transaction_id);
+  const csvTxns   = txns.filter(t => !t.plaid_transaction_id);
+  const totalIn   = txns.filter(t => t.amount > 0).reduce((s,t) => s + t.amount, 0);
+  const totalOut  = txns.filter(t => t.amount < 0).reduce((s,t) => s + t.amount, 0);
+  const oldest    = txns.length ? txns[txns.length - 1].date : null;
+  const newest    = txns.length ? txns[0].date : null;
+  const fmtDate   = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+
+  // Data source section
+  let dataSourceHTML = '';
+  if (account.plaid_account_id) {
+    const lastSync = plaidItem?.last_synced_at ? fmtDate(plaidItem.last_synced_at.split('T')[0]) : 'Never';
+    dataSourceHTML = `
+      <div class="acct-info-card acct-info-plaid">
+        <div class="acct-info-card-head">
+          <i class="fa-solid fa-link"></i> Plaid Connected
+          <span class="acct-badge acct-badge-plaid" style="margin-left:auto">Live sync</span>
+        </div>
+        <div class="acct-info-row"><span>Institution</span><strong>${account.institution || '—'}</strong></div>
+        <div class="acct-info-row"><span>Last synced</span><strong>${lastSync}</strong></div>
+        <div class="acct-info-row"><span>Plaid transactions</span><strong>${plaidTxns.length}</strong></div>
+        <div class="acct-info-card-actions">
+          <button class="btn-ghost btn-xs" onclick="syncPlaidNow()"><i class="fa-solid fa-rotate"></i> Sync now</button>
+          <button class="btn-ghost btn-xs acct-danger-btn" onclick="closeAccountDrawer();unlinkPlaidAccount('${account.id}','${account.name.replace(/'/g,"\\'")}')">
+            <i class="fa-solid fa-unlink"></i> Unlink Plaid
+          </button>
+        </div>
+      </div>`;
+  } else {
+    dataSourceHTML = `
+      <div class="acct-info-card">
+        <div class="acct-info-card-head"><i class="fa-solid fa-link"></i> Plaid Connection</div>
+        <p style="font-size:13px;color:var(--text-secondary);margin:0">Not connected. Link this account to automatically sync transactions.</p>
+        <div class="acct-info-card-actions">
+          <button class="btn-primary btn-xs" onclick="closeAccountDrawer();initPlaidLink()">
+            <i class="fa-solid fa-link"></i> Connect via Plaid
+          </button>
+        </div>
+      </div>`;
+  }
+
+  if (csvTxns.length > 0) {
+    dataSourceHTML += `
+      <div class="acct-info-card">
+        <div class="acct-info-card-head"><i class="fa-solid fa-file-csv"></i> CSV Uploads</div>
+        <div class="acct-info-row"><span>Imported transactions</span><strong>${csvTxns.length}</strong></div>
+        <div class="acct-info-card-actions">
+          <button class="btn-ghost btn-xs" onclick="closeAccountDrawer();showPage('upload');uploadForAccount('${account.id}')">
+            <i class="fa-solid fa-arrow-up-from-bracket"></i> Upload more
+          </button>
+        </div>
+      </div>`;
+  } else if (!account.plaid_account_id) {
+    dataSourceHTML += `
+      <div class="acct-info-card">
+        <div class="acct-info-card-head"><i class="fa-solid fa-file-csv"></i> CSV Upload</div>
+        <p style="font-size:13px;color:var(--text-secondary);margin:0">No CSV data yet. Export a statement from your bank and upload it.</p>
+        <div class="acct-info-card-actions">
+          <button class="btn-ghost btn-xs" onclick="closeAccountDrawer();showPage('upload');uploadForAccount('${account.id}')">
+            <i class="fa-solid fa-file-csv"></i> Upload CSV
+          </button>
+        </div>
+      </div>`;
+  }
+
+  panel.innerHTML = `
+    <div class="acct-overview-stats">
+      <div class="acct-stat">
+        <div class="acct-stat-val">${txns.length}</div>
+        <div class="acct-stat-lbl">Transactions</div>
+      </div>
+      <div class="acct-stat">
+        <div class="acct-stat-val">${fmtDate(oldest)}</div>
+        <div class="acct-stat-lbl">Earliest</div>
+      </div>
+      <div class="acct-stat">
+        <div class="acct-stat-val">${fmtDate(newest)}</div>
+        <div class="acct-stat-lbl">Latest</div>
+      </div>
+      ${!isDebt ? `
+      <div class="acct-stat">
+        <div class="acct-stat-val" style="color:var(--green)">${fmt(totalIn)}</div>
+        <div class="acct-stat-lbl">Total in</div>
+      </div>
+      <div class="acct-stat">
+        <div class="acct-stat-val" style="color:var(--red)">${fmt(Math.abs(totalOut))}</div>
+        <div class="acct-stat-lbl">Total out</div>
+      </div>` : ''}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;margin-top:4px">
+      ${dataSourceHTML}
+    </div>
+    <div style="margin-top:16px">
+      <button class="btn-ghost btn-sm" onclick="closeAccountDrawer();showPage('expenses')">
+        <i class="fa-solid fa-receipt"></i> View all transactions →
+      </button>
+    </div>`;
+}
+
+async function loadAcctTransactions(accountId) {
+  const panel = document.getElementById('acct-tab-transactions');
+  if (!panel) return;
+
+  const { data: txns } = await sb.from('transactions')
+    .select('date,merchant,amount,category,plaid_transaction_id')
+    .eq('account_id', accountId).eq('user_id', currentUser.id)
+    .order('date', { ascending: false }).limit(50);
+
+  if (!txns || txns.length === 0) {
+    panel.innerHTML = `<div class="empty-state" style="padding:40px 0"><i class="fa-solid fa-receipt"></i><p>No transactions yet</p></div>`;
+    return;
+  }
+
+  panel.innerHTML = `
+    <div class="acct-txn-list">
+      ${txns.map(t => {
+        const cat  = CAT_META[t.category] || CAT_META['other'];
+        const isIn = t.amount >= 0;
+        const src  = t.plaid_transaction_id ? '<i class="fa-solid fa-link" title="Plaid" style="color:var(--text-tertiary);font-size:10px"></i>' : '<i class="fa-solid fa-file-csv" title="CSV" style="color:var(--text-tertiary);font-size:10px"></i>';
+        return `
+          <div class="acct-txn-row">
+            <div class="acct-txn-icon"><i class="${cat.icon}"></i></div>
+            <div class="acct-txn-body">
+              <div class="acct-txn-merchant">${t.merchant || '—'}</div>
+              <div class="acct-txn-meta">${t.date} · ${cat.label} ${src}</div>
+            </div>
+            <div class="acct-txn-amount ${isIn ? 'pos' : 'neg'}">${isIn ? '+' : ''}${fmtFull(t.amount)}</div>
+          </div>`;
+      }).join('')}
+      ${txns.length === 50 ? `<div style="text-align:center;padding:12px;font-size:12px;color:var(--text-tertiary)">Showing most recent 50 · <button class="btn-link" onclick="closeAccountDrawer();showPage('expenses')">See all</button></div>` : ''}
+    </div>`;
 }
 
 function closeAccountDrawer() {
