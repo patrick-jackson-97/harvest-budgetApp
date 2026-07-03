@@ -423,8 +423,11 @@ async function openAccountDrawer(account) {
     if (txnErr) throw new Error(txnErr.message);
 
     const allTxns = txns || [];
+    console.log('[1] fetch done, rows:', allTxns.length);
     populateAcctOverview(account, allTxns, []);
+    console.log('[2] overview done');
     populateAcctTrend(account, allTxns);
+    console.log('[3] trend done');
   } catch(e) {
     console.error('[drawer] load error:', e);
     const p = document.getElementById('acct-tab-trend');
@@ -653,8 +656,10 @@ function populateAcctTrend(account, txnsDesc) {
     min: monthData[ym].min,
   }));
 
+  console.log('[2a] months computed:', _trendAllMonths.length);
   if (!_trendAllMonths.length) return;
   renderTrendChart(account, _trendAllMonths, 'all');
+  console.log('[2b] renderTrendChart done');
 }
 
 function renderTrendChart(account, months, activeWindow) {
