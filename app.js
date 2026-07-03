@@ -402,10 +402,24 @@ async function openAccountDrawer(account) {
   document.body.appendChild(overlay);
   requestAnimationFrame(() => overlay.querySelector('.acct-drawer').classList.add('open'));
 
-  // Load all tabs in parallel
-  loadAcctOverview(account);
-  loadAcctTrend(account);
-  loadAcctTransactions(account.id);
+  // Single fetch for all tabs — avoids 3 separate round-trips
+  const [txnRes, itemsRes] = await Promise.all([
+    sb.from('transactions')
+      .select('date, amount, merchant, category, plaid_transaction_id')
+      .eq('account_id', account.id)
+      .eq('user_id', currentUser.id)
+      .order('date', { ascending: false }),
+    account.plaid_account_id
+      ? edgeFetch('plaid-list-items', {}).then(r => r.json()).catch(() => ({ items: [] }))
+      : Promise.resolve({ items: [] }),
+  ]);
+
+  const txns  = txnRes.data || [];
+  const items = (itemsRes.items || []);
+
+  populateAcctOverview(account, txns, items);
+  populateAcctTrend(account, txns);
+  populateAcctTransactions(txns);
 }
 
 function switchAcctTab(tab, btn) {
@@ -415,22 +429,11 @@ function switchAcctTab(tab, btn) {
   btn.classList.add('active');
 }
 
-async function loadAcctOverview(account) {
+function populateAcctOverview(account, txns, items) {
   const panel = document.getElementById('acct-tab-overview');
   if (!panel) return;
 
   const isDebt = isDebtAccount(account);
-
-  // Fetch transaction summary + plaid item info in parallel
-  const [txnRes, itemsRes] = await Promise.all([
-    sb.from('transactions').select('date, amount, plaid_transaction_id').eq('account_id', account.id).eq('user_id', currentUser.id).order('date', { ascending: false }),
-    account.plaid_account_id
-      ? edgeFetch('plaid-list-items', {}).then(r => r.json()).catch(() => ({ items: [] }))
-      : Promise.resolve({ items: [] }),
-  ]);
-
-  const txns  = txnRes.data || [];
-  const items = itemsRes.items || [];
   const plaidItem = items.find(i => i.institution_name === account.institution);
 
   const plaidTxns = txns.filter(t => t.plaid_transaction_id);
@@ -532,14 +535,9 @@ async function loadAcctOverview(account) {
     </div>`;
 }
 
-async function loadAcctTransactions(accountId) {
+function populateAcctTransactions(txns) {
   const panel = document.getElementById('acct-tab-transactions');
   if (!panel) return;
-
-  const { data: txns } = await sb.from('transactions')
-    .select('date,merchant,amount,category,plaid_transaction_id')
-    .eq('account_id', accountId).eq('user_id', currentUser.id)
-    .order('date', { ascending: false }).limit(500);
 
   if (!txns || txns.length === 0) {
     panel.innerHTML = `<div class="empty-state" style="padding:40px 0"><i class="fa-solid fa-receipt"></i><p>No transactions yet</p></div>`;
@@ -562,73 +560,53 @@ async function loadAcctTransactions(accountId) {
             <div class="acct-txn-amount ${isIn ? 'pos' : 'neg'}">${isIn ? '+' : ''}${fmtFull(t.amount)}</div>
           </div>`;
       }).join('')}
-      ${txns.length === 500 ? `<div style="text-align:center;padding:12px;font-size:12px;color:var(--text-tertiary)">Showing most recent 500 · <button class="btn-link" onclick="closeAccountDrawer();showPage('expenses')">See all</button></div>` : ''}
+      <div style="text-align:center;padding:12px;font-size:12px;color:var(--text-tertiary)"><button class="btn-link" onclick="closeAccountDrawer();showPage('expenses')">View on Expenses page →</button></div>
     </div>`;
 }
 
 let _trendAllMonths = [];   // cache so timeframe buttons don't re-fetch
 let _trendAccount   = null;
 
-async function loadAcctTrend(account, windowMonths) {
+function populateAcctTrend(account, txnsDesc) {
   const panel = document.getElementById('acct-tab-trend');
   if (!panel) return;
 
-  // Fetch all transactions once; cache for timeframe switching
-  if (_trendAccount?.id !== account.id) {
-    _trendAccount = account;
-    _trendAllMonths = [];
-
-    const { data: txns } = await sb.from('transactions')
-      .select('date, amount')
-      .eq('account_id', account.id)
-      .eq('user_id', currentUser.id)
-      .order('date', { ascending: true });
-
-    if (!txns || txns.length === 0) {
-      panel.innerHTML = `<div class="empty-state" style="padding:40px 0"><i class="fa-solid fa-chart-line"></i><p>Not enough data to show a trend yet</p></div>`;
-      return;
-    }
-
-    // Build per-day running balance
-    const currentBal  = parseFloat(account.balance) || 0;
-    const totalTxnSum = txns.reduce((s, t) => s + parseFloat(t.amount), 0);
-    let runningBal    = currentBal - totalTxnSum;
-
-    // Group transactions by date
-    const byDate = {};
-    txns.forEach(t => {
-      byDate[t.date] = (byDate[t.date] || 0) + parseFloat(t.amount);
-    });
-
-    // Walk day-by-day to track end-of-day balance per month
-    const dates = Object.keys(byDate).sort();
-    const monthData = {}; // ym -> { end, min }
-
-    dates.forEach(d => {
-      runningBal += byDate[d];
-      const ym = d.slice(0, 7);
-      if (!monthData[ym]) monthData[ym] = { end: runningBal, min: runningBal };
-      monthData[ym].end = runningBal;
-      monthData[ym].min = Math.min(monthData[ym].min, runningBal);
-    });
-
-    _trendAllMonths = Object.keys(monthData).sort().map(ym => ({
-      ym,
-      end: monthData[ym].end,
-      min: monthData[ym].min,
-    }));
+  if (!txnsDesc || txnsDesc.length === 0) {
+    panel.innerHTML = `<div class="empty-state" style="padding:40px 0"><i class="fa-solid fa-chart-line"></i><p>Not enough data to show a trend yet</p></div>`;
+    return;
   }
 
-  const allMonths = _trendAllMonths;
-  if (!allMonths.length) return;
+  // txns arrive newest-first; sort ascending for running balance calc
+  const txns = [...txnsDesc].reverse();
 
-  // Apply timeframe window
-  const window = windowMonths || 'all';
-  const sliced = window === 'all'
-    ? allMonths
-    : allMonths.slice(-parseInt(window));
+  const currentBal  = parseFloat(account.balance) || 0;
+  const totalTxnSum = txns.reduce((s, t) => s + parseFloat(t.amount), 0);
+  let runningBal    = currentBal - totalTxnSum;
 
-  renderTrendChart(account, sliced, window);
+  const byDate = {};
+  txns.forEach(t => {
+    byDate[t.date] = (byDate[t.date] || 0) + parseFloat(t.amount);
+  });
+
+  const dates = Object.keys(byDate).sort();
+  const monthData = {};
+  dates.forEach(d => {
+    runningBal += byDate[d];
+    const ym = d.slice(0, 7);
+    if (!monthData[ym]) monthData[ym] = { end: runningBal, min: runningBal };
+    monthData[ym].end = runningBal;
+    monthData[ym].min = Math.min(monthData[ym].min, runningBal);
+  });
+
+  _trendAccount   = account;
+  _trendAllMonths = Object.keys(monthData).sort().map(ym => ({
+    ym,
+    end: monthData[ym].end,
+    min: monthData[ym].min,
+  }));
+
+  if (!_trendAllMonths.length) return;
+  renderTrendChart(account, _trendAllMonths, 'all');
 }
 
 function renderTrendChart(account, months, activeWindow) {
