@@ -152,6 +152,7 @@ function showPage(page) {
   if (page === 'dashboard') renderDashboard();
   if (page === 'budget')    renderBudgetPage();
   if (page === 'upload')    { renderUploadPage(); populateAccountSelect(); }
+  if (page === 'expenses')  renderExpensesPage();
 }
 
 /* ============================================================
