@@ -402,18 +402,27 @@ async function openAccountDrawer(account) {
   document.body.appendChild(overlay);
   requestAnimationFrame(() => overlay.querySelector('.acct-drawer').classList.add('open'));
 
-  // Fetch transactions only — no awaiting the Edge Function cold start
-  const { data: txns } = await sb.from('transactions')
+  // Fetch transactions — limited to 2000 rows to prevent timeout
+  const { data: txns, error: txnErr } = await sb.from('transactions')
     .select('date, amount, plaid_transaction_id')
     .eq('account_id', account.id)
     .eq('user_id', currentUser.id)
-    .order('date', { ascending: false });
+    .order('date', { ascending: false })
+    .limit(2000);
+
+  console.log('[drawer] txns fetched:', txns?.length, txnErr);
 
   const allTxns = txns || [];
 
-  // Render overview and trend immediately with what we have
-  populateAcctOverview(account, allTxns, []);
-  populateAcctTrend(account, allTxns);
+  try { populateAcctOverview(account, allTxns, []); }
+  catch(e) { console.error('[drawer] overview error:', e); }
+
+  try { populateAcctTrend(account, allTxns); }
+  catch(e) {
+    console.error('[drawer] trend error:', e);
+    const p = document.getElementById('acct-tab-trend');
+    if (p) p.innerHTML = `<div style="padding:24px;color:var(--red);font-size:13px">Chart error: ${e.message}</div>`;
+  }
 
   // Transactions tab lazy-loads on click
   const txnPanel = document.getElementById('acct-tab-transactions');
