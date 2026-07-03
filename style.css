@@ -54,6 +54,11 @@ input, select, textarea { font-family: inherit; }
   --amber:          #a06b10;
   --amber-light:    #fdf3e0;
 
+  /* Aliases used by newer components */
+  --accent:       #3d6b22;   /* = --primary */
+  --text-primary: #1e2a14;   /* = --text */
+  --hover:        #ede9e0;   /* subtle hover bg */
+
   /* Layout */
   --nav-w:    220px;
   --nav-h:    60px;
