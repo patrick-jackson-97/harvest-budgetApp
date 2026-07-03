@@ -151,6 +151,7 @@ function showPage(page) {
   document.getElementById('page-' + page)?.classList.add('active');
   if (page === 'dashboard') renderDashboard();
   if (page === 'budget')    renderBudgetPage();
+  if (page === 'upload')    { renderUploadPage(); populateAccountSelect(); }
 }
 
 /* ============================================================
