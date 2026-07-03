@@ -690,14 +690,19 @@ async function renderBudgetPage() {
     sb.from('user_categories').select('*').eq('user_id', currentUser.id).order('sort_order'),
   ]);
 
-  const actualIncome = (transactions || [])
+  // Exclude CC payments from all calculations — they're transfers between your own
+  // accounts, not real income or spending. Actual purchases are already captured as
+  // individual CC transactions.
+  const realTxns = (transactions || []).filter(t => t.category !== 'cc_payment');
+
+  const actualIncome = realTxns
     .filter(t => parseFloat(t.amount) > 0)
     .reduce((s, t) => s + parseFloat(t.amount), 0);
 
   const incomeGoal = (incomeGoals || []).reduce((s, g) => s + parseFloat(g.goal), 0);
 
   const spendByCat = {};
-  (transactions || []).filter(t => parseFloat(t.amount) < 0).forEach(t => {
+  realTxns.filter(t => parseFloat(t.amount) < 0).forEach(t => {
     const cat = t.category || 'other';
     spendByCat[cat] = (spendByCat[cat] || 0) + Math.abs(parseFloat(t.amount));
   });
