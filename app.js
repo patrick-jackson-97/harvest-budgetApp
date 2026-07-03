@@ -41,6 +41,8 @@ const CAT_META = {
   savings_cat:   { label: 'Savings / Investing', icon: 'fa-solid fa-seedling' },
   personal:      { label: 'Personal Care',       icon: 'fa-solid fa-spa' },
   kids:          { label: 'Kids / Family',       icon: 'fa-solid fa-baby' },
+  income:        { label: 'Income',              icon: 'fa-solid fa-arrow-down-to-bracket' },
+  cc_payment:    { label: 'Credit Card Payment', icon: 'fa-solid fa-credit-card' },
   other:         { label: 'Other',               icon: 'fa-solid fa-ellipsis' },
 };
 
