@@ -663,126 +663,161 @@ function populateAcctTrend(account, txnsDesc) {
   console.log('[2b] panel innerHTML length after render:', _p ? _p.innerHTML.length : 'PANEL NOT FOUND');
 }
 
+let _trendChartInstance = null;
+
 function renderTrendChart(account, months, activeWindow) {
   const panel = document.getElementById('acct-tab-trend');
   if (!panel) return;
 
   const endVals = months.map(m => m.end);
   const minVals = months.map(m => m.min);
-  const allVals = [...endVals, ...minVals];
-
-  const minVal = Math.min(...allVals);
-  const maxVal = Math.max(...allVals);
-  const range  = maxVal - minVal || 1;
-  const n      = months.length;
+  const n = months.length;
   const isDebt = isDebtAccount(account);
-  const lineColor = isDebt ? 'var(--red)' : 'var(--accent)';
+  const lineColor = isDebt ? '#c0392b' : '#3d6b22';
 
-  const W = 480, H = 190, PAD = { top: 16, right: 16, bottom: 32, left: 64 };
-  const chartW = W - PAD.left - PAD.right;
-  const chartH = H - PAD.top  - PAD.bottom;
-
-  const xScale = i => PAD.left + (n > 1 ? (i / (n - 1)) * chartW : chartW / 2);
-  const yScale = v => PAD.top  + chartH - ((v - minVal) / range) * chartH;
-
-  // End-of-month line
-  const endPts   = months.map((_, i) => `${xScale(i).toFixed(1)},${yScale(endVals[i]).toFixed(1)}`);
-  const linePath = `M ${endPts.join(' L ')}`;
-  const fillPath = `M ${xScale(0).toFixed(1)},${(PAD.top + chartH).toFixed(1)} L ${endPts.join(' L ')} L ${xScale(n-1).toFixed(1)},${(PAD.top + chartH).toFixed(1)} Z`;
-
-  // Minimum balance dashed line
-  const minPts    = months.map((_, i) => `${xScale(i).toFixed(1)},${yScale(minVals[i]).toFixed(1)}`);
-  const minPath   = `M ${minPts.join(' L ')}`;
-
-  // Y-axis ticks
-  const yTicks = [minVal, minVal + range / 2, maxVal];
-  const yTicksHTML = yTicks.map(v => {
-    const y = yScale(v);
-    return `
-      <text x="${(PAD.left - 6)}" y="${y.toFixed(0)}" text-anchor="end" dominant-baseline="middle" font-size="10" fill="var(--text-tertiary)">${fmtShort(v)}</text>
-      <line x1="${PAD.left}" y1="${y.toFixed(0)}" x2="${W - PAD.right}" y2="${y.toFixed(0)}" stroke="var(--border)" stroke-width="1" stroke-dasharray="3,3"/>`;
-  }).join('');
-
-  // X-axis labels
-  const maxLabels  = Math.min(n, 12);
-  const step       = Math.max(1, Math.floor(n / maxLabels));
-  const xTicksHTML = months.map((m, i) => {
-    if (i % step !== 0 && i !== n - 1) return '';
+  const labels  = months.map(m => {
     const [yr, mo] = m.ym.split('-');
-    const label = new Date(+yr, +mo - 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-    return `<text x="${xScale(i).toFixed(0)}" y="${H - 6}" text-anchor="middle" font-size="10" fill="var(--text-tertiary)">${label}</text>`;
-  }).join('');
+    return new Date(+yr, +mo - 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+  });
 
-  const lastX = xScale(n - 1), lastY = yScale(endVals[n - 1]);
-  const change = endVals[n - 1] - endVals[0];
+  const change   = endVals[n - 1] - endVals[0];
   const earliest = new Date(months[0].ym + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
   const latest   = new Date(months[n-1].ym + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 
   const WINDOWS = [
-    { key: '3',   label: '3M' },
-    { key: '6',   label: '6M' },
-    { key: '12',  label: '1Y' },
-    { key: '24',  label: '2Y' },
+    { key: '3', label: '3M' },
+    { key: '6', label: '6M' },
+    { key: '12', label: '1Y' },
+    { key: '24', label: '2Y' },
     { key: 'all', label: 'All' },
   ];
 
-  const _html = `
-    <div class="acct-trend-header">
-      <div>
-        <div class="acct-trend-range">${earliest} – ${latest} · ${n} months</div>
-      </div>
-      <div class="acct-trend-windows">
-        ${WINDOWS.map(w => `
-          <button class="acct-trend-win-btn ${activeWindow == w.key ? 'active' : ''}"
-            onclick="renderTrendChart(_trendAccount, _trendAllMonths.slice(${w.key === 'all' ? '' : '-' + w.key}), '${w.key}')">
-            ${w.label}
-          </button>`).join('')}
-      </div>
-    </div>
-    <div class="acct-trend-legend">
-      <span class="acct-trend-legend-item"><span class="acct-trend-legend-line solid" style="background:${lineColor}"></span>End of month</span>
-      <span class="acct-trend-legend-item"><span class="acct-trend-legend-line dashed" style="border-color:${lineColor}"></span>Monthly low</span>
-      <span class="acct-trend-legend-delta ${change >= 0 ? 'pos' : 'neg'}">${change >= 0 ? '▲' : '▼'} ${fmtFull(Math.abs(change))}</span>
-    </div>
-    <div class="acct-trend-chart-wrap">
-      <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">
-        <defs>
-          <linearGradient id="trendFill${account.id}" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="${lineColor}" stop-opacity="0.15"/>
-            <stop offset="100%" stop-color="${lineColor}" stop-opacity="0.01"/>
-          </linearGradient>
-        </defs>
-        ${yTicksHTML}
-        <path d="${fillPath}" fill="url(#trendFill${account.id})"/>
-        <path d="${minPath}" fill="none" stroke="${lineColor}" stroke-width="1.5" stroke-dasharray="4,3" stroke-opacity="0.5" stroke-linejoin="round"/>
-        <path d="${linePath}" fill="none" stroke="${lineColor}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-        <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="4" fill="${lineColor}"/>
-        ${xTicksHTML}
-      </svg>
-    </div>
-    <div class="acct-trend-months">
-      <div class="acct-trend-month-row acct-trend-month-head">
-        <span>Month</span><span>End balance</span><span>Low</span><span>Change</span>
-      </div>
-      ${[...months].reverse().map((m, i, arr) => {
-        const origIdx = months.length - 1 - i;
-        const [yr, mo] = m.ym.split('-');
-        const label = new Date(+yr, +mo - 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-        const delta = origIdx > 0 ? endVals[origIdx] - endVals[origIdx - 1] : null;
-        return `
-          <div class="acct-trend-month-row">
-            <span class="acct-trend-month-lbl">${label}</span>
-            <span class="acct-trend-month-bal">${fmtFull(m.end)}</span>
-            <span class="acct-trend-month-low ${m.min < m.end * 0.95 ? 'warn' : ''}">${fmtFull(m.min)}</span>
-            ${delta !== null
-              ? `<span class="acct-trend-month-delta ${delta >= 0 ? 'pos' : 'neg'}">${delta >= 0 ? '+' : ''}${fmtShort(delta)}</span>`
-              : '<span>—</span>'}
-          </div>`;
-      }).join('')}
-    </div>`;
-  console.log('[chart] html length:', _html.length, 'first 100:', _html.substring(0, 100));
-  panel.innerHTML = _html;
-  console.log('[chart] panel after set:', panel.innerHTML.length);
+  // Build DOM directly — no nested template literals
+  panel.innerHTML = '';
+
+  const header = document.createElement('div');
+  header.className = 'acct-trend-header';
+  const rangeDiv = document.createElement('div');
+  rangeDiv.className = 'acct-trend-range';
+  rangeDiv.textContent = earliest + ' – ' + latest + ' · ' + n + ' months';
+  header.appendChild(rangeDiv);
+  const winDiv = document.createElement('div');
+  winDiv.className = 'acct-trend-windows';
+  WINDOWS.forEach(function(w) {
+    const btn = document.createElement('button');
+    btn.className = 'acct-trend-win-btn' + (activeWindow == w.key ? ' active' : '');
+    btn.textContent = w.label;
+    btn.onclick = function() {
+      const slice = w.key === 'all' ? _trendAllMonths : _trendAllMonths.slice(-parseInt(w.key));
+      renderTrendChart(_trendAccount, slice, w.key);
+    };
+    winDiv.appendChild(btn);
+  });
+  header.appendChild(winDiv);
+  panel.appendChild(header);
+
+  const legend = document.createElement('div');
+  legend.className = 'acct-trend-legend';
+  legend.innerHTML =
+    '<span class="acct-trend-legend-item"><span class="acct-trend-legend-line solid" style="background:' + lineColor + '"></span>End of month</span>' +
+    '<span class="acct-trend-legend-item"><span class="acct-trend-legend-line dashed" style="border-color:' + lineColor + '"></span>Monthly low</span>' +
+    '<span class="acct-trend-legend-delta ' + (change >= 0 ? 'pos' : 'neg') + '">' + (change >= 0 ? '▲' : '▼') + ' ' + fmtFull(Math.abs(change)) + '</span>';
+  panel.appendChild(legend);
+
+  const chartWrap = document.createElement('div');
+  chartWrap.className = 'acct-trend-chart-wrap';
+  const canvas = document.createElement('canvas');
+  canvas.id = 'acct-trend-canvas';
+  chartWrap.appendChild(canvas);
+  panel.appendChild(chartWrap);
+
+  if (_trendChartInstance) {
+    _trendChartInstance.destroy();
+    _trendChartInstance = null;
+  }
+
+  _trendChartInstance = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'End of month',
+          data: endVals,
+          borderColor: lineColor,
+          backgroundColor: lineColor + '22',
+          borderWidth: 2.5,
+          pointRadius: 2,
+          pointHoverRadius: 5,
+          fill: true,
+          tension: 0.3,
+        },
+        {
+          label: 'Monthly low',
+          data: minVals,
+          borderColor: lineColor,
+          backgroundColor: 'transparent',
+          borderWidth: 1.5,
+          borderDash: [4, 3],
+          pointRadius: 0,
+          fill: false,
+          tension: 0.3,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) { return ctx.dataset.label + ': ' + fmtFull(ctx.parsed.y); },
+          },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { maxTicksLimit: 10, color: '#888', font: { size: 10 } },
+          grid: { display: false },
+        },
+        y: {
+          ticks: {
+            color: '#888',
+            font: { size: 10 },
+            callback: function(v) { return fmtShort(v); },
+          },
+          grid: { color: '#e5e5e5' },
+        },
+      },
+    },
+  });
+
+  // Monthly table
+  const table = document.createElement('div');
+  table.className = 'acct-trend-months';
+  const headRow = document.createElement('div');
+  headRow.className = 'acct-trend-month-row acct-trend-month-head';
+  headRow.innerHTML = '<span>Month</span><span>End balance</span><span>Low</span><span>Change</span>';
+  table.appendChild(headRow);
+  [...months].reverse().forEach(function(m, i) {
+    const origIdx = months.length - 1 - i;
+    const [yr, mo] = m.ym.split('-');
+    const lbl = new Date(+yr, +mo - 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    const delta = origIdx > 0 ? endVals[origIdx] - endVals[origIdx - 1] : null;
+    const row = document.createElement('div');
+    row.className = 'acct-trend-month-row';
+    row.innerHTML =
+      '<span class="acct-trend-month-lbl">' + lbl + '</span>' +
+      '<span class="acct-trend-month-bal">' + fmtFull(m.end) + '</span>' +
+      '<span class="acct-trend-month-low' + (m.min < m.end * 0.95 ? ' warn' : '') + '">' + fmtFull(m.min) + '</span>' +
+      (delta !== null
+        ? '<span class="acct-trend-month-delta ' + (delta >= 0 ? 'pos' : 'neg') + '">' + (delta >= 0 ? '+' : '') + fmtShort(delta) + '</span>'
+        : '<span>—</span>');
+    table.appendChild(row);
+  });
+  panel.appendChild(table);
 }
 
 function fmtShort(n) {
