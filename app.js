@@ -630,6 +630,7 @@ function populateAcctTransactions(txns) {
 }
 
 let _trendAllMonths = [];   // cache so timeframe buttons don't re-fetch
+let _budgetUserCats = [];   // cache for budget category manager
 let _trendAccount   = null;
 
 function populateAcctTrend(account, txnsDesc) {
@@ -991,8 +992,9 @@ async function renderBudgetPage() {
   const totalGoal  = (budgets || []).reduce((s, b) => s + parseFloat(b.goal), 0);
 
   const BUDGET_CATS = new Set(['income', 'cc_payment', 'savings_cat']); // never shown in budget
-  const cats = (userCats && userCats.length)
-    ? userCats.map(c => c.category_id)
+  _budgetUserCats = userCats || [];
+  const cats = (_budgetUserCats.length)
+    ? _budgetUserCats.map(c => c.category_id)
     : Object.keys(CAT_META).filter(k => !BUDGET_CATS.has(k));
 
   content.innerHTML = `
@@ -1021,7 +1023,7 @@ async function renderBudgetPage() {
     <div class="section">
       <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
         <span><i class="fa-solid fa-scale-balanced"></i> Spending by Category</span>
-        <button class="btn-ghost btn-sm" onclick="openBudgetCatManager(${JSON.stringify((userCats||[]).map(c=>c.category_id))})">
+        <button class="btn-ghost btn-sm" onclick="openBudgetCatManager()">
           <i class="fa-solid fa-sliders"></i> Manage
         </button>
       </div>
@@ -1149,9 +1151,9 @@ async function saveBudgetGoals() {
   if (!error) renderBudgetPage();
 }
 
-function openBudgetCatManager(activeCatIds) {
+function openBudgetCatManager() {
   const HIDDEN   = new Set(['income', 'cc_payment', 'savings_cat']);
-  const activeCats = new Set(activeCatIds || []);
+  const activeCats = new Set(_budgetUserCats.map(c => c.category_id));
   const available  = Object.entries(CAT_META).filter(([k]) => !HIDDEN.has(k));
 
   const existing = document.getElementById('budget-cat-modal');
