@@ -224,8 +224,18 @@ function renderEmptyDashboard() {
   if (chartCard) chartCard.style.display = 'none';
 }
 
+function isDebtAccount(a) {
+  return a.type === 'credit' || a.type === 'loan';
+}
+
+function accountNetWorthValue(a) {
+  if (a.exclude_from_net_worth) return 0;
+  const bal = parseFloat(a.balance) || 0;
+  return isDebtAccount(a) ? -Math.abs(bal) : bal;
+}
+
 function renderNetWorth(accounts) {
-  const total = accounts.reduce((s, a) => s + (parseFloat(a.balance) || 0), 0);
+  const total = accounts.reduce((s, a) => s + accountNetWorthValue(a), 0);
   document.getElementById('nw-total').textContent = fmtFull(total);
 
   const groups = {};
@@ -246,8 +256,8 @@ function renderNetWorth(accounts) {
 }
 
 function renderStatRow(accounts) {
-  const assets      = accounts.filter(a => a.type !== 'credit' && a.type !== 'loan').reduce((s,a) => s + (parseFloat(a.balance)||0), 0);
-  const liabilities = accounts.filter(a => a.type === 'credit' || a.type === 'loan').reduce((s,a) => s + Math.abs(parseFloat(a.balance)||0), 0);
+  const assets      = accounts.filter(a => !isDebtAccount(a)).reduce((s,a) => s + (parseFloat(a.balance)||0), 0);
+  const liabilities = accounts.filter(a => isDebtAccount(a) && !a.exclude_from_net_worth).reduce((s,a) => s + Math.abs(parseFloat(a.balance)||0), 0);
   const liquid      = accounts.filter(a => a.type === 'checking' || a.type === 'savings').reduce((s,a) => s + (parseFloat(a.balance)||0), 0);
 
   document.getElementById('stat-row').innerHTML = `
@@ -270,19 +280,110 @@ function renderStatRow(accounts) {
 
 function renderAccountCards(accounts) {
   document.getElementById('account-cards').innerHTML = accounts.map(a => {
-    const meta   = TYPE_META[a.type] || {};
-    const bal    = parseFloat(a.balance) || 0;
-    const isDebt = a.type === 'credit' || a.type === 'loan';
+    const meta    = TYPE_META[a.type] || {};
+    const bal     = parseFloat(a.balance) || 0;
+    const isDebt  = isDebtAccount(a);
+    const excluded = a.exclude_from_net_worth;
     return `
-      <div class="account-card">
+      <div class="account-card" onclick="openAccountDrawer(${JSON.stringify(a).replace(/"/g,'&quot;')})" style="cursor:pointer">
         <div class="account-card-icon ${meta.iconClass || ''}">
           <i class="${meta.icon || 'fa-solid fa-circle-dollar-to-slot'}"></i>
         </div>
-        <div class="account-card-type">${meta.label || a.type}</div>
+        <div class="account-card-type">${meta.label || a.type}${excluded ? ' <span class="acct-excluded-tag">excluded</span>' : ''}</div>
         <div class="account-card-name">${a.name}</div>
-        <div class="account-card-balance ${isDebt ? 'liability' : 'asset'}">${fmtFull(bal)}</div>
+        <div class="account-card-balance ${isDebt ? 'liability' : 'asset'}">${isDebt ? '-' : ''}${fmtFull(Math.abs(bal))}</div>
       </div>`;
   }).join('');
+}
+
+/* ── ACCOUNT DETAIL / EDIT DRAWER ── */
+function openAccountDrawer(account) {
+  const existing = document.getElementById('acct-drawer-overlay');
+  if (existing) existing.remove();
+
+  const isDebt = isDebtAccount(account);
+  const overlay = document.createElement('div');
+  overlay.id = 'acct-drawer-overlay';
+  overlay.className = 'acct-drawer-overlay';
+  overlay.onclick = e => { if (e.target === overlay) closeAccountDrawer(); };
+
+  overlay.innerHTML = `
+    <div class="acct-drawer">
+      <div class="acct-drawer-header">
+        <div class="acct-drawer-title">${account.name}</div>
+        <button class="btn-ghost btn-xs" onclick="closeAccountDrawer()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="acct-drawer-body">
+        <div class="form-group">
+          <label class="form-label">Account name</label>
+          <input class="form-input" id="edit-acct-name" value="${account.name}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Institution</label>
+          <input class="form-input" id="edit-acct-institution" value="${account.institution || ''}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <select class="form-select" id="edit-acct-type">
+            ${Object.entries(TYPE_META).map(([k,v]) =>
+              `<option value="${k}" ${account.type===k?'selected':''}>${v.label}</option>`
+            ).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Current balance</label>
+          <input class="form-input" id="edit-acct-balance" type="number" step="0.01" value="${Math.abs(parseFloat(account.balance)||0)}">
+        </div>
+        ${isDebt ? `
+        <div class="acct-drawer-toggle">
+          <label class="toggle-label">
+            <input type="checkbox" id="edit-acct-exclude" ${account.exclude_from_net_worth ? 'checked' : ''}>
+            <span class="toggle-track"></span>
+            <span class="toggle-text">Exclude from net worth</span>
+          </label>
+          <p class="toggle-hint">Use this when the corresponding asset (car, home) isn't tracked here — so the loan doesn't unfairly reduce your net worth.</p>
+        </div>` : ''}
+        <div class="acct-drawer-footer">
+          <button class="btn-secondary" onclick="closeAccountDrawer()">Cancel</button>
+          <button class="btn-primary" onclick="saveAccountEdits('${account.id}')">
+            <i class="fa-solid fa-check"></i> Save changes
+          </button>
+        </div>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.querySelector('.acct-drawer').classList.add('open'));
+}
+
+function closeAccountDrawer() {
+  const overlay = document.getElementById('acct-drawer-overlay');
+  if (!overlay) return;
+  overlay.querySelector('.acct-drawer').classList.remove('open');
+  setTimeout(() => overlay.remove(), 250);
+}
+
+async function saveAccountEdits(accountId) {
+  const name        = document.getElementById('edit-acct-name')?.value.trim();
+  const institution = document.getElementById('edit-acct-institution')?.value.trim();
+  const type        = document.getElementById('edit-acct-type')?.value;
+  const balRaw      = parseFloat(document.getElementById('edit-acct-balance')?.value) || 0;
+  const exclude     = document.getElementById('edit-acct-exclude')?.checked ?? false;
+  const isDebt      = type === 'credit' || type === 'loan';
+  const balance     = isDebt ? -Math.abs(balRaw) : balRaw;
+
+  if (!name) { showQuickToast('Name is required'); return; }
+
+  const { error } = await sb.from('accounts').update({
+    name, institution, type, balance,
+    exclude_from_net_worth: exclude,
+  }).eq('id', accountId).eq('user_id', currentUser.id);
+
+  if (error) { showQuickToast('Save failed: ' + error.message); return; }
+
+  closeAccountDrawer();
+  renderDashboard();
+  showQuickToast('Account updated');
 }
 
 async function renderTrendChart(accounts) {
