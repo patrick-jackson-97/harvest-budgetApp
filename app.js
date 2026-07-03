@@ -670,8 +670,12 @@ function populateAcctTrend(account, txnsDesc) {
     min: monthData[ym].min,
   }));
 
-  // Chart is rendered lazily in switchAcctTab when the tab becomes visible
-  // (Chart.js canvas requires a visible element to size correctly)
+  // If the trend tab is already visible (user clicked it before fetch returned), render now
+  const trendPanel = document.getElementById('acct-tab-trend');
+  if (trendPanel && trendPanel.style.display !== 'none' && !trendPanel._chartRendered) {
+    trendPanel._chartRendered = true;
+    renderTrendChart(_trendAccount, _trendAllMonths, 'all');
+  }
 }
 
 let _trendChartInstance = null;
