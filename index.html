@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Harvest — Personal Finance</title>
+  <link rel="stylesheet" href="style.css?v=2">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<!-- ====== LOGIN SCREEN ====== -->
+<div id="login-screen">
+  <div class="login-hero">
+    <div class="login-hero-inner">
+      <div class="login-logo">🌾</div>
+      <h1 class="login-title">Harvest</h1>
+      <p class="login-tagline">You've worked hard growing your crops.<br>Now let's see what you've brought in.</p>
+    </div>
+  </div>
+  <div class="login-body">
+    <div id="login-form">
+      <p class="login-label">Enter your email to get a sign-in link</p>
+      <div class="login-input-row">
+        <input class="form-input" id="login-email" type="email" placeholder="you@example.com" autocomplete="email">
+        <button class="btn-primary" id="login-btn" onclick="sendMagicLink()">
+          <i class="fa-solid fa-paper-plane"></i> Send link
+        </button>
+      </div>
+      <p class="login-hint">No password needed — we'll email you a one-click sign-in link.</p>
+      <div id="login-error" class="login-error" style="display:none"></div>
+    </div>
+    <div id="login-sent" style="display:none">
+      <div class="login-sent-box">
+        <i class="fa-solid fa-envelope-open-text"></i>
+        <h2>Check your email</h2>
+        <p>We sent a sign-in link to <strong id="login-sent-email"></strong>. Click it to open Harvest.</p>
+        <button class="btn-ghost" onclick="resetLoginForm()" style="margin-top:16px">Use a different email</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== MAIN APP ====== -->
+<div id="app" style="display:none">
+
+  <!-- ── SIDEBAR ── -->
+  <nav id="sidebar">
+    <div class="sidebar-brand">
+      <div class="sidebar-leaf">🌾</div>
+      <div class="sidebar-name">Harvest</div>
+      <div class="sidebar-tagline">Personal Finance</div>
+    </div>
+
+    <div class="nav-section-label">Overview</div>
+    <button class="nav-item active" data-page="dashboard" onclick="showPage('dashboard')">
+      <i class="fa-solid fa-seedling"></i> Wealth Health
+    </button>
+
+    <div class="nav-section-label">Money</div>
+    <button class="nav-item" data-page="budget" onclick="showPage('budget')">
+      <i class="fa-solid fa-scale-balanced"></i> Budget
+    </button>
+    <button class="nav-item" data-page="expenses" onclick="showPage('expenses')">
+      <i class="fa-solid fa-receipt"></i> Expenses
+    </button>
+    <button class="nav-item" data-page="upload" onclick="showPage('upload')">
+      <i class="fa-solid fa-arrow-up-from-bracket"></i> Upload / Connect
+    </button>
+
+    <div class="sidebar-footer">
+      <button class="sidebar-footer-btn" onclick="showIntake()">
+        <i class="fa-solid fa-sliders"></i> Set up accounts
+      </button>
+      <button class="sidebar-footer-btn" onclick="signOut()">
+        <i class="fa-solid fa-arrow-right-from-bracket"></i> Sign out
+      </button>
+    </div>
+  </nav>
+
+  <!-- ── MAIN ── -->
+  <div id="main">
+
+    <!-- ====== DASHBOARD PAGE ====== -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-topbar">
+        <div class="page-topbar-left">
+          <h1>Wealth Health</h1>
+          <p id="topbar-date"></p>
+        </div>
+        <button class="btn-secondary btn-sm" onclick="showIntake()">
+          <i class="fa-solid fa-plus"></i> Add account
+        </button>
+      </div>
+      <div class="page-content">
+        <div class="section">
+          <div class="networth-card">
+            <div class="networth-label">Total Net Worth</div>
+            <div class="networth-value" id="nw-total">—</div>
+            <div class="networth-change"><span id="nw-change"></span></div>
+            <div class="networth-pills" id="nw-pills"></div>
+          </div>
+        </div>
+        <div class="section grid-3" id="stat-row"></div>
+        <div class="section">
+          <div class="section-title"><i class="fa-solid fa-wallet"></i> Account Balances</div>
+          <div class="account-grid" id="account-cards"></div>
+        </div>
+        <div class="section">
+          <div class="card card-padded">
+            <div class="card-title">12-Month Trend</div>
+            <div class="chart-legend" id="chart-legend"></div>
+            <div class="chart-wrap"><canvas id="trend-chart"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== BUDGET PAGE ====== -->
+    <div class="page" id="page-budget">
+      <div class="page-topbar">
+        <div class="page-topbar-left">
+          <h1>Budget</h1>
+          <p>Monthly goals vs. actual spending</p>
+        </div>
+        <div class="topbar-actions">
+          <button class="btn-ghost" id="budget-prev-month" onclick="budgetChangeMonth(-1)">
+            <i class="fa-solid fa-chevron-left"></i>
+          </button>
+          <span class="month-label" id="budget-month-label">—</span>
+          <button class="btn-ghost" id="budget-next-month" onclick="budgetChangeMonth(1)">
+            <i class="fa-solid fa-chevron-right"></i>
+          </button>
+        </div>
+      </div>
+      <div class="page-content" id="budget-content">
+        <div class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><p>Loading…</p></div>
+      </div>
+    </div>
+
+    <!-- ====== EXPENSES PAGE ====== -->
+    <div class="page" id="page-expenses">
+      <div class="page-topbar">
+        <div class="page-topbar-left">
+          <h1>Expenses</h1>
+          <p>Browse and categorize transactions</p>
+        </div>
+      </div>
+      <div class="page-stub">
+        <i class="fa-solid fa-receipt"></i>
+        <h2>Expenses coming soon</h2>
+        <p>Upload a bank statement to start seeing your transactions here.</p>
+        <span class="badge badge-green">Coming soon</span>
+      </div>
+    </div>
+
+    <!-- ====== UPLOAD PAGE ====== -->
+    <div class="page" id="page-upload">
+      <div class="page-topbar">
+        <div class="page-topbar-left">
+          <h1>Upload / Connect</h1>
+          <p>Import your bank and credit card data</p>
+        </div>
+      </div>
+      <div class="page-stub">
+        <i class="fa-solid fa-arrow-up-from-bracket"></i>
+        <h2>Upload transactions</h2>
+        <p>Drop a CSV export from your bank or connect via Plaid. Coming soon.</p>
+        <span class="badge badge-amber">Coming soon</span>
+      </div>
+    </div>
+
+  </div><!-- /#main -->
+
+  <!-- ── MOBILE NAV ── -->
+  <nav id="mobile-nav">
+    <div class="mobile-nav-inner">
+      <button class="mobile-nav-item active" data-page="dashboard" onclick="showPage('dashboard')">
+        <i class="fa-solid fa-seedling"></i> Wealth
+      </button>
+      <button class="mobile-nav-item" data-page="budget" onclick="showPage('budget')">
+        <i class="fa-solid fa-scale-balanced"></i> Budget
+      </button>
+      <button class="mobile-nav-item" data-page="expenses" onclick="showPage('expenses')">
+        <i class="fa-solid fa-receipt"></i> Expenses
+      </button>
+      <button class="mobile-nav-item" data-page="upload" onclick="showPage('upload')">
+        <i class="fa-solid fa-arrow-up"></i> Upload
+      </button>
+    </div>
+  </nav>
+
+</div><!-- /#app -->
+
+<!-- ====== INTAKE OVERLAY ====== -->
+<div id="intake-overlay">
+  <div id="intake-inner"></div>
+</div>
+
+<script src="app.js?v=2"></script>
+<script src="intake.js?v=2"></script>
+</body>
+</html>
