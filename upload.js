@@ -279,13 +279,36 @@ function renderUploadPage() {
   if (!content) return;
   content.innerHTML = `
     <div class="section">
-      <div class="section-title"><i class="fa-solid fa-landmark"></i> Which account is this for?</div>
-      <select class="form-select" id="upload-account-select" style="max-width:360px" onchange="uploadAccountId=this.value">
-        <option value="">— Select an account —</option>
-      </select>
+      <div class="section-title"><i class="fa-solid fa-link"></i> Connect your bank automatically</div>
+      <div class="card card-padded plaid-card">
+        <div class="plaid-card-top">
+          <div>
+            <div class="plaid-card-heading">Link with Plaid</div>
+            <div class="plaid-card-sub">Securely connect your bank — transactions sync automatically. Supports Wells Fargo, US Bank, Vanguard, Chase, and thousands more.</div>
+          </div>
+          <button class="btn-primary" id="plaid-connect-btn" onclick="initPlaidLink()">
+            <i class="fa-solid fa-link"></i> Connect a bank account
+          </button>
+        </div>
+        <div id="plaid-status"></div>
+        <div id="plaid-connections" style="margin-top:12px"></div>
+        <div class="plaid-sync-row" id="plaid-sync-row" style="display:none">
+          <button class="btn-ghost btn-sm" id="plaid-sync-btn" onclick="syncPlaidNow()">
+            <i class="fa-solid fa-rotate"></i> Sync now
+          </button>
+          <span class="plaid-sync-hint">Pull the latest transactions from all connected accounts</span>
+        </div>
+      </div>
     </div>
+
     <div class="section">
-      <div class="section-title"><i class="fa-solid fa-file-csv"></i> Upload a CSV export</div>
+      <div class="section-title"><i class="fa-solid fa-file-csv"></i> Or upload a CSV export</div>
+      <div class="section">
+        <div class="section-title" style="font-size:13px;margin-bottom:8px"><i class="fa-solid fa-landmark"></i> Which account is this for?</div>
+        <select class="form-select" id="upload-account-select" style="max-width:360px" onchange="uploadAccountId=this.value">
+          <option value="">— Select an account —</option>
+        </select>
+      </div>
       <div class="upload-dropzone" id="upload-dropzone"
            ondragover="uploadDragOver(event)"
            ondragleave="uploadDragLeave(event)"
@@ -298,6 +321,15 @@ function renderUploadPage() {
       </div>
     </div>
     <div id="upload-result"></div>`;
+
+  // Load connected Plaid accounts and show sync button if any exist
+  renderPlaidConnections().then(() => {
+    const el = document.getElementById('plaid-connections');
+    const syncRow = document.getElementById('plaid-sync-row');
+    if (el && syncRow && el.querySelector('.plaid-institution')) {
+      syncRow.style.display = 'flex';
+    }
+  });
 }
 
 async function populateAccountSelect() {
