@@ -298,6 +298,10 @@ function renderUploadPage() {
           </button>
           <span class="plaid-sync-hint">Pull the latest transactions from all connected accounts</span>
         </div>
+        <div class="plaid-powered">
+          <img src="https://cdn.brandfetch.io/plaid.com/w/100/h/28/symbol?c=1idBEEF5U0I2FPFuSBv" alt="Powered by Plaid" class="plaid-powered-logo" onerror="this.replaceWith(document.createTextNode('Powered by Plaid'))">
+          <span>Bank connections secured by <a href="https://plaid.com" target="_blank" rel="noopener">Plaid</a></span>
+        </div>
       </div>
     </div>
 

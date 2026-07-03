@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Harvest — Personal Finance</title>
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css?v=9">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -31,6 +31,7 @@
       </div>
       <p class="login-hint">No password needed — we'll email you a one-click sign-in link.</p>
       <div id="login-error" class="login-error" style="display:none"></div>
+      <p class="login-privacy">By signing in you agree to our <a href="#" onclick="event.preventDefault(); document.getElementById('login-screen').style.display='none'; document.getElementById('app').style.display='flex'; showPage('security')">Privacy Policy</a>. Bank connections are secured by <a href="https://plaid.com" target="_blank" rel="noopener">Plaid</a>.</p>
     </div>
     <div id="login-sent" style="display:none">
       <div class="login-sent-box">
@@ -192,7 +193,7 @@
 <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
 <script src="app.js?v=8"></script>
 <script src="intake.js?v=3"></script>
-<script src="upload.js?v=5"></script>
+<script src="upload.js?v=6"></script>
 <script src="expenses.js?v=1"></script>
 <script src="plaid.js?v=1"></script>
 </body>
