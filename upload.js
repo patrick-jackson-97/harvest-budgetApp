@@ -279,36 +279,27 @@ function renderUploadPage() {
   if (!content) return;
   content.innerHTML = `
     <div class="section">
-      <div class="section-title"><i class="fa-solid fa-link"></i> Connect your bank automatically</div>
-      <div class="card card-padded plaid-card">
-        <div class="plaid-card-top">
-          <div>
-            <div class="plaid-card-heading">Link with Plaid</div>
-            <div class="plaid-card-sub">Securely connect your bank — transactions sync automatically. Supports Wells Fargo, US Bank, Vanguard, Chase, and thousands more.</div>
-          </div>
-          <button class="btn-primary" id="plaid-connect-btn" onclick="initPlaidLink()">
-            <i class="fa-solid fa-link"></i> Connect a bank account
+      <div class="section-title-row">
+        <div class="section-title"><i class="fa-solid fa-wallet"></i> Account Data Status</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn-ghost btn-sm" id="plaid-sync-btn" onclick="syncPlaidNow()" style="display:none">
+            <i class="fa-solid fa-rotate"></i> Sync all
+          </button>
+          <button class="btn-primary btn-sm" id="plaid-connect-btn" onclick="initPlaidLink()">
+            <i class="fa-solid fa-link"></i> Connect bank
           </button>
         </div>
-        <div id="plaid-status"></div>
-        <div id="plaid-connections" style="margin-top:12px"></div>
-        <div class="plaid-sync-row" id="plaid-sync-row" style="display:none">
-          <button class="btn-ghost btn-sm" id="plaid-sync-btn" onclick="syncPlaidNow()">
-            <i class="fa-solid fa-rotate"></i> Sync now
-          </button>
-          <span class="plaid-sync-hint">Pull the latest transactions from all connected accounts</span>
-        </div>
-        <div class="plaid-powered">
-          <img src="https://cdn.brandfetch.io/plaid.com/w/100/h/28/symbol?c=1idBEEF5U0I2FPFuSBv" alt="Powered by Plaid" class="plaid-powered-logo" onerror="this.replaceWith(document.createTextNode('Powered by Plaid'))">
-          <span>Bank connections secured by <a href="https://plaid.com" target="_blank" rel="noopener">Plaid</a></span>
-        </div>
+      </div>
+      <div id="plaid-status"></div>
+      <div id="account-data-grid" class="acct-data-grid">
+        <div class="empty-state"><i class="fa-solid fa-spinner fa-spin"></i><p>Loading…</p></div>
       </div>
     </div>
 
     <div class="section">
-      <div class="section-title"><i class="fa-solid fa-file-csv"></i> Or upload a CSV export</div>
-      <div class="section">
-        <div class="section-title" style="font-size:13px;margin-bottom:8px"><i class="fa-solid fa-landmark"></i> Which account is this for?</div>
+      <div class="section-title"><i class="fa-solid fa-file-csv"></i> Upload a CSV export</div>
+      <div style="margin-bottom:12px">
+        <label class="form-label">Which account is this for?</label>
         <select class="form-select" id="upload-account-select" style="max-width:360px" onchange="uploadAccountId=this.value">
           <option value="">— Select an account —</option>
         </select>
@@ -324,16 +315,120 @@ function renderUploadPage() {
         <input type="file" id="upload-file-input" accept=".csv" style="display:none" onchange="uploadFileSelected(this)">
       </div>
     </div>
-    <div id="upload-result"></div>`;
+    <div id="upload-result"></div>
 
-  // Load connected Plaid accounts and show sync button if any exist
-  renderPlaidConnections().then(() => {
-    const el = document.getElementById('plaid-connections');
-    const syncRow = document.getElementById('plaid-sync-row');
-    if (el && syncRow && el.querySelector('.plaid-institution')) {
-      syncRow.style.display = 'flex';
-    }
+    <div style="text-align:center;margin-top:8px;margin-bottom:24px;font-size:12px;color:var(--text-tertiary)">
+      Bank connections secured by <a href="https://plaid.com" target="_blank" rel="noopener">Plaid</a>
+    </div>`;
+
+  // Hidden element plaid.js still looks for
+  const hidden = document.createElement('div');
+  hidden.id = 'plaid-connections';
+  hidden.style.display = 'none';
+  content.appendChild(hidden);
+
+  renderAccountDataGrid();
+  populateAccountSelect();
+}
+
+/* ── ACCOUNT DATA GRID ── */
+async function renderAccountDataGrid() {
+  const grid = document.getElementById('account-data-grid');
+  if (!grid || !currentUser) return;
+
+  // Fetch accounts, transactions summary, and plaid items in parallel
+  const [acctRes, txnRes, itemsRes] = await Promise.all([
+    sb.from('accounts').select('id,name,type,institution,balance,plaid_account_id').eq('user_id', currentUser.id).order('institution').order('name'),
+    sb.from('transactions').select('account_id,date,plaid_transaction_id').eq('user_id', currentUser.id),
+    edgeFetch('plaid-list-items', {}).then(r => r.json()).catch(() => ({ items: [] })),
+  ]);
+
+  const accounts = acctRes.data || [];
+  const txns     = txnRes.data || [];
+  const items    = itemsRes.items || [];
+
+  if (!accounts.length) {
+    grid.innerHTML = `<div class="empty-state"><i class="fa-solid fa-plus-circle"></i><p>No accounts yet — <button class="btn-link" onclick="showIntake()">add one</button></p></div>`;
+    return;
+  }
+
+  // Build per-account transaction stats
+  const stats = {};
+  txns.forEach(t => {
+    if (!t.account_id) return;
+    if (!stats[t.account_id]) stats[t.account_id] = { total: 0, lastDate: null, hasPlaid: false, hasCsv: false };
+    stats[t.account_id].total++;
+    if (!stats[t.account_id].lastDate || t.date > stats[t.account_id].lastDate) stats[t.account_id].lastDate = t.date;
+    if (t.plaid_transaction_id) stats[t.account_id].hasPlaid = true;
+    else stats[t.account_id].hasCsv = true;
   });
+
+  // Build item map by institution name
+  const itemByInst = {};
+  items.forEach(item => { itemByInst[item.institution_name] = item; });
+
+  const TYPE_ICON = { checking: 'fa-building-columns', savings: 'fa-piggy-bank', credit: 'fa-credit-card', investment: 'fa-chart-line', loan: 'fa-house', other: 'fa-wallet' };
+
+  grid.innerHTML = accounts.map(a => {
+    const s    = stats[a.id] || { total: 0, lastDate: null, hasPlaid: false, hasCsv: false };
+    const item = a.plaid_account_id ? itemByInst[a.institution] : null;
+    const icon = TYPE_ICON[a.type] || 'fa-wallet';
+
+    let statusBadge, statusDetail, actions;
+
+    if (a.plaid_account_id) {
+      const lastSync = item?.last_synced_at ? new Date(item.last_synced_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Never';
+      statusBadge  = `<span class="acct-badge acct-badge-plaid"><i class="fa-solid fa-link"></i> Plaid Connected</span>`;
+      statusDetail = `${s.total} transactions · Last sync: ${lastSync}`;
+      actions      = `<button class="btn-ghost btn-xs" onclick="syncPlaidNow()"><i class="fa-solid fa-rotate"></i> Sync</button>
+                      <button class="btn-ghost btn-xs acct-danger-btn" onclick="unlinkPlaidAccount('${a.id}','${a.name.replace(/'/g,"\\'")}')"><i class="fa-solid fa-unlink"></i> Unlink</button>`;
+    } else if (s.hasCsv || s.hasPlaid) {
+      const lastDate = s.lastDate ? new Date(s.lastDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+      statusBadge  = `<span class="acct-badge acct-badge-csv"><i class="fa-solid fa-file-csv"></i> CSV Data</span>`;
+      statusDetail = `${s.total} transactions · Latest: ${lastDate}`;
+      actions      = `<button class="btn-ghost btn-xs" onclick="uploadForAccount('${a.id}')"><i class="fa-solid fa-arrow-up-from-bracket"></i> Upload more</button>
+                      <button class="btn-ghost btn-xs" onclick="connectPlaidForAccount('${a.id}')"><i class="fa-solid fa-link"></i> Connect Plaid</button>`;
+    } else {
+      statusBadge  = `<span class="acct-badge acct-badge-empty"><i class="fa-solid fa-circle-xmark"></i> No data</span>`;
+      statusDetail = `No transactions yet`;
+      actions      = `<button class="btn-ghost btn-xs" onclick="connectPlaidForAccount('${a.id}')"><i class="fa-solid fa-link"></i> Connect Plaid</button>
+                      <button class="btn-ghost btn-xs" onclick="uploadForAccount('${a.id}')"><i class="fa-solid fa-file-csv"></i> Upload CSV</button>`;
+    }
+
+    return `
+      <div class="acct-data-card">
+        <div class="acct-data-icon"><i class="fa-solid ${icon}"></i></div>
+        <div class="acct-data-body">
+          <div class="acct-data-name">${a.name}</div>
+          <div class="acct-data-inst">${a.institution || '—'}</div>
+          <div class="acct-data-status">${statusBadge} <span class="acct-data-detail">${statusDetail}</span></div>
+        </div>
+        <div class="acct-data-actions">${actions}</div>
+      </div>`;
+  }).join('');
+
+  // Show sync button if any Plaid accounts exist
+  const hasPaid = accounts.some(a => a.plaid_account_id);
+  const syncBtn = document.getElementById('plaid-sync-btn');
+  if (syncBtn) syncBtn.style.display = hasPaid ? 'inline-flex' : 'none';
+}
+
+function uploadForAccount(accountId) {
+  uploadAccountId = accountId;
+  document.getElementById('upload-account-select').value = accountId;
+  document.getElementById('upload-dropzone')?.scrollIntoView({ behavior: 'smooth' });
+}
+
+function connectPlaidForAccount(accountId) {
+  // Store intent — after Plaid connects, the mapping modal will appear
+  initPlaidLink();
+}
+
+async function unlinkPlaidAccount(accountId, accountName) {
+  if (!confirm(`Unlink Plaid from "${accountName}"? Existing transactions are kept, but auto-sync will stop for this account.`)) return;
+  await sb.from('accounts').update({ plaid_account_id: null }).eq('id', accountId).eq('user_id', currentUser.id);
+  showQuickToast(`${accountName} unlinked from Plaid`);
+  renderAccountDataGrid();
 }
 
 async function populateAccountSelect() {
