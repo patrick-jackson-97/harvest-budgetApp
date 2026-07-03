@@ -303,6 +303,10 @@ async function openAccountDrawer(account) {
   const existing = document.getElementById('acct-drawer-overlay');
   if (existing) existing.remove();
 
+  // Reset trend cache so each drawer open re-renders
+  _trendAllMonths = [];
+  _trendAccount   = null;
+
   const isDebt = isDebtAccount(account);
   const meta   = TYPE_META[account.type] || {};
   const bal    = parseFloat(account.balance) || 0;
@@ -402,6 +406,10 @@ async function openAccountDrawer(account) {
   document.body.appendChild(overlay);
   requestAnimationFrame(() => overlay.querySelector('.acct-drawer').classList.add('open'));
 
+  // Reset lazy-render flag so chart draws fresh for this account
+  const trendPanel = document.getElementById('acct-tab-trend');
+  if (trendPanel) trendPanel._chartRendered = false;
+
   // Show account info immediately from the account object — no fetch needed for the basics
   populateAcctOverview(account, [], []);
 
@@ -466,6 +474,12 @@ function switchAcctTab(tab, btn) {
   const panel = document.getElementById(`acct-tab-${tab}`);
   panel.style.display = 'block';
   btn.classList.add('active');
+
+  // Lazy-render trend chart on first click (Chart.js needs visible canvas)
+  if (tab === 'trend' && _trendAllMonths && _trendAllMonths.length && !panel._chartRendered) {
+    panel._chartRendered = true;
+    renderTrendChart(_trendAccount, _trendAllMonths, 'all');
+  }
 
   // Lazy-load transactions tab on first click
   if (tab === 'transactions' && panel._accountId && !panel._loaded) {
@@ -656,11 +670,8 @@ function populateAcctTrend(account, txnsDesc) {
     min: monthData[ym].min,
   }));
 
-  console.log('[2a] months computed:', _trendAllMonths.length);
-  if (!_trendAllMonths.length) return;
-  renderTrendChart(account, _trendAllMonths, 'all');
-  const _p = document.getElementById('acct-tab-trend');
-  console.log('[2b] panel innerHTML length after render:', _p ? _p.innerHTML.length : 'PANEL NOT FOUND');
+  // Chart is rendered lazily in switchAcctTab when the tab becomes visible
+  // (Chart.js canvas requires a visible element to size correctly)
 }
 
 let _trendChartInstance = null;
