@@ -733,11 +733,8 @@ function renderAcctTrendChart(account, months, activeWindow) {
 
   const legend = document.createElement('div');
   legend.className = 'acct-trend-legend';
-  const primaryLabel = account.type === 'checking' ? 'Monthly low' : 'End of month';
-  const secondaryLabel = account.type === 'checking' ? 'End of month' : 'Monthly low';
   legend.innerHTML =
-    '<span class="acct-trend-legend-item"><span class="acct-trend-legend-line solid" style="background:' + lineColor + '"></span>' + primaryLabel + '</span>' +
-    '<span class="acct-trend-legend-item"><span class="acct-trend-legend-line dashed" style="border-color:' + lineColor + '"></span>' + secondaryLabel + '</span>' +
+    '<span class="acct-trend-legend-item"><span class="acct-trend-legend-line solid" style="background:' + lineColor + '"></span>Monthly low</span>' +
     '<span class="acct-trend-legend-delta ' + (change >= 0 ? 'pos' : 'neg') + '">' + (change >= 0 ? '▲' : '▼') + ' ' + fmtFull(Math.abs(change)) + '</span>';
   panel.appendChild(legend);
 
@@ -759,25 +756,14 @@ function renderAcctTrendChart(account, months, activeWindow) {
       labels: labels,
       datasets: [
         {
-          label: account.type === 'checking' ? 'Monthly low' : 'End of month',
-          data: account.type === 'checking' ? minVals : endVals,
+          label: 'Monthly low',
+          data: minVals,
           borderColor: lineColor,
           backgroundColor: lineColor + '22',
           borderWidth: 2.5,
           pointRadius: 2,
           pointHoverRadius: 5,
           fill: true,
-          tension: 0.3,
-        },
-        {
-          label: account.type === 'checking' ? 'End of month' : 'Monthly low',
-          data: account.type === 'checking' ? endVals : minVals,
-          borderColor: lineColor,
-          backgroundColor: 'transparent',
-          borderWidth: 1.5,
-          borderDash: [4, 3],
-          pointRadius: 0,
-          fill: false,
           tension: 0.3,
         },
       ],
