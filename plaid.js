@@ -205,36 +205,70 @@ async function renderPlaidConnections() {
   const el = document.getElementById('plaid-connections');
   if (!el || !currentUser) return;
 
-  // We can't query plaid_items from the client (no RLS), so we rely on accounts table
-  const { data: accounts } = await sb
-    .from('accounts')
-    .select('id,name,type,institution,balance,plaid_account_id')
-    .eq('user_id', currentUser.id)
-    .not('plaid_account_id', 'is', null)
-    .order('institution');
+  // Fetch connected items (via edge function — plaid_items has no client RLS)
+  const itemsRes = await edgeFetch('plaid-list-items', {});
+  const { items } = await itemsRes.json();
 
-  if (!accounts || accounts.length === 0) {
+  if (!items || items.length === 0) {
     el.innerHTML = '<p class="plaid-no-connections">No connected accounts yet.</p>';
     return;
   }
 
-  // Group by institution
-  const byInst = {};
-  accounts.forEach(a => {
+  // Fetch linked accounts from DB
+  const { data: accounts } = await sb
+    .from('accounts')
+    .select('id,name,type,institution,balance,plaid_account_id')
+    .eq('user_id', currentUser.id)
+    .not('plaid_account_id', 'is', null);
+
+  const acctsByInst = {};
+  (accounts || []).forEach(a => {
     const key = a.institution || 'Unknown';
-    if (!byInst[key]) byInst[key] = [];
-    byInst[key].push(a);
+    if (!acctsByInst[key]) acctsByInst[key] = [];
+    acctsByInst[key].push(a);
   });
 
-  el.innerHTML = Object.entries(byInst).map(([inst, accts]) => `
+  el.innerHTML = items.map(item => {
+    const inst = item.institution_name || 'Unknown';
+    const linked = acctsByInst[inst] || [];
+    const lastSync = item.last_synced_at
+      ? new Date(item.last_synced_at).toLocaleDateString()
+      : 'Never';
+    return `
     <div class="plaid-institution">
-      <div class="plaid-inst-name"><i class="fa-solid fa-landmark"></i> ${inst}</div>
-      ${accts.map(a => `
-        <div class="plaid-account-row">
-          <span class="plaid-account-name">${a.name}</span>
-          <span class="plaid-account-balance">${fmtFull(a.balance)}</span>
-        </div>`).join('')}
-    </div>`).join('');
+      <div class="plaid-inst-header">
+        <div class="plaid-inst-name"><i class="fa-solid fa-landmark"></i> ${inst}</div>
+        <button class="btn-ghost btn-xs" onclick="remapPlaidItem('${item.item_id}', '${inst}')">
+          <i class="fa-solid fa-arrows-rotate"></i> Re-map accounts
+        </button>
+      </div>
+      ${linked.length > 0
+        ? linked.map(a => `
+          <div class="plaid-account-row">
+            <span class="plaid-account-name">${a.name}</span>
+            <span class="plaid-account-balance">${fmtFull(a.balance)}</span>
+          </div>`).join('')
+        : `<p class="plaid-no-connections" style="margin:4px 0 0 0;font-size:0.82rem">
+             No accounts mapped yet — click Re-map accounts.
+           </p>`
+      }
+      <div class="plaid-inst-footer">Last synced: ${lastSync}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ── RE-MAP: fetch accounts for an existing item and show mapping modal ── */
+async function remapPlaidItem(itemId, institutionName) {
+  showPlaidStatus('loading', `Loading ${institutionName} accounts…`);
+  try {
+    const res = await edgeFetch('plaid-get-accounts', { item_id: itemId });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    clearPlaidStatus();
+    await showAccountMappingModal(data.plaid_accounts, institutionName);
+  } catch (e) {
+    showPlaidStatus('error', 'Could not load accounts: ' + e.message);
+  }
 }
 
 /* ── HELPERS ── */

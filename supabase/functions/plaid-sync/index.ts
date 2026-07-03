@@ -92,20 +92,31 @@ Deno.serve(async (req) => {
           type:                 t.amount > 0 ? 'debit' : 'credit',
           raw_category:         t.personal_finance_category?.primary
                                   ?.replace(/_/g, ' ').toLowerCase() || null,
-          category:              'other',
-          plaid_transaction_id:  t.transaction_id,
-          raw_plaid_account_id:  t.account_id,
+          category:             'other',
+          plaid_transaction_id: t.transaction_id,
+          raw_plaid_account_id: t.account_id,
         }));
 
-        const CHUNK = 500;
-        for (let i = 0; i < rows.length; i += CHUNK) {
-          await admin.from('transactions').upsert(
-            rows.slice(i, i + CHUNK),
-            { onConflict: 'plaid_transaction_id', ignoreDuplicates: true }
-          );
-        }
+        // Pre-filter rows we already have (partial unique index doesn't work with upsert onConflict)
+        const { data: existing } = await admin
+          .from('transactions')
+          .select('plaid_transaction_id')
+          .eq('user_id', user.id)
+          .not('plaid_transaction_id', 'is', null);
 
-        totalAdded += rows.length;
+        const existingIds = new Set((existing || []).map((r: any) => r.plaid_transaction_id));
+        const newRows = rows.filter(r => !existingIds.has(r.plaid_transaction_id));
+
+        if (newRows.length > 0) {
+          const CHUNK = 500;
+          for (let i = 0; i < newRows.length; i += CHUNK) {
+            const { error: insertErr } = await admin
+              .from('transactions')
+              .insert(newRows.slice(i, i + CHUNK));
+            if (insertErr) console.error('Insert error:', insertErr);
+          }
+          totalAdded += newRows.length;
+        }
       }
 
       if (cursor) {
