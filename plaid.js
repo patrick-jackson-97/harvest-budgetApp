@@ -237,9 +237,14 @@ async function renderPlaidConnections() {
     <div class="plaid-institution">
       <div class="plaid-inst-header">
         <div class="plaid-inst-name"><i class="fa-solid fa-landmark"></i> ${inst}</div>
-        <button class="btn-ghost btn-xs" onclick="remapPlaidItem('${item.item_id}', '${inst}')">
-          <i class="fa-solid fa-arrows-rotate"></i> Re-map accounts
-        </button>
+        <div style="display:flex;gap:6px">
+          <button class="btn-ghost btn-xs" onclick="remapPlaidItem('${item.item_id}', '${inst}')">
+            <i class="fa-solid fa-arrows-rotate"></i> Re-map
+          </button>
+          <button class="btn-ghost btn-xs plaid-delete-btn" onclick="disconnectPlaidItem('${item.item_id}', '${inst}')">
+            <i class="fa-solid fa-trash"></i> Disconnect
+          </button>
+        </div>
       </div>
       ${linked.length > 0
         ? linked.map(a => `
@@ -281,6 +286,21 @@ async function deletePlaidAccount(accountId, accountName) {
     renderDashboard();
   } catch (e) {
     showQuickToast('Delete failed: ' + e.message);
+  }
+}
+
+/* ── DISCONNECT a Plaid item (removes the connection) ── */
+async function disconnectPlaidItem(itemId, institutionName) {
+  if (!confirm(`Disconnect ${institutionName}? This removes the bank connection but keeps your existing transactions and accounts.`)) return;
+
+  try {
+    const res = await edgeFetch('plaid-remove-item', { item_id: itemId });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+    showQuickToast(`${institutionName} disconnected`);
+    renderPlaidConnections();
+  } catch (e) {
+    showQuickToast('Disconnect failed: ' + e.message);
   }
 }
 
