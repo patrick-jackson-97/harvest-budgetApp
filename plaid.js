@@ -88,7 +88,6 @@ async function showAccountMappingModal(plaidAccounts, institutionName) {
     .from('accounts')
     .select('id, name, type, institution')
     .eq('user_id', currentUser.id)
-    .is('plaid_account_id', null)
     .order('name');
 
   // Build modal HTML
