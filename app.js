@@ -1152,21 +1152,19 @@ async function saveBudgetGoals() {
 }
 
 function openBudgetCatManager() {
-  const HIDDEN   = new Set(['income', 'cc_payment', 'savings_cat']);
-  const activeCats = new Set(_budgetUserCats.map(c => c.category_id));
+  const HIDDEN     = new Set(['income', 'cc_payment', 'savings_cat']);
+  const activeCats = _budgetUserCats.length
+    ? new Set(_budgetUserCats.map(c => c.category_id))
+    : new Set(Object.keys(CAT_META).filter(k => !HIDDEN.has(k)));
   const available  = Object.entries(CAT_META).filter(([k]) => !HIDDEN.has(k));
 
-  const existing = document.getElementById('budget-cat-modal');
+  const existing = document.getElementById('budget-cat-dialog');
   if (existing) existing.remove();
 
-  const overlay = document.createElement('div');
-  overlay.id = 'budget-cat-modal';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center';
+  const dialog = document.createElement('dialog');
+  dialog.id = 'budget-cat-dialog';
+  dialog.style.cssText = 'border:none;border-radius:16px;padding:24px;width:360px;max-height:80vh;display:flex;flex-direction:column;gap:16px;box-shadow:0 8px 32px rgba(0,0,0,0.25);background:var(--surface)';
 
-  const box = document.createElement('div');
-  box.style.cssText = 'background:var(--surface);border-radius:16px;padding:24px;width:360px;max-height:80vh;display:flex;flex-direction:column;gap:16px;box-shadow:0 8px 32px rgba(0,0,0,0.18)';
-
-  // Header
   const head = document.createElement('div');
   head.style.cssText = 'display:flex;align-items:center;justify-content:space-between';
   const title = document.createElement('strong');
@@ -1175,7 +1173,7 @@ function openBudgetCatManager() {
   const closeBtn = document.createElement('button');
   closeBtn.className = 'btn-ghost btn-xs';
   closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-  closeBtn.onclick = () => overlay.remove();
+  closeBtn.onclick = () => dialog.close();
   head.appendChild(title);
   head.appendChild(closeBtn);
 
@@ -1183,28 +1181,23 @@ function openBudgetCatManager() {
   hint.style.cssText = 'font-size:13px;color:var(--text-secondary);margin:0';
   hint.textContent = 'Check the categories you want to track in your budget.';
 
-  // List
   const list = document.createElement('div');
-  list.style.cssText = 'overflow-y:auto;display:flex;flex-direction:column;gap:8px';
+  list.style.cssText = 'overflow-y:auto;display:flex;flex-direction:column;gap:8px;flex:1';
 
   available.forEach(([k, v]) => {
     const label = document.createElement('label');
     label.style.cssText = 'display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px;border-radius:8px;border:1px solid var(--border)';
-
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.dataset.catid = k;
     cb.checked = activeCats.has(k);
-    cb.style.cssText = 'width:16px;height:16px;accent-color:var(--accent);flex-shrink:0';
-
+    cb.style.cssText = 'width:16px;height:16px;flex-shrink:0';
     const icon = document.createElement('i');
     icon.className = v.icon;
     icon.style.cssText = 'width:16px;text-align:center;color:var(--text-secondary)';
-
     const span = document.createElement('span');
     span.style.fontSize = '14px';
     span.textContent = v.label;
-
     label.appendChild(cb);
     label.appendChild(icon);
     label.appendChild(span);
@@ -1216,18 +1209,18 @@ function openBudgetCatManager() {
   saveBtn.innerHTML = '<i class="fa-solid fa-check"></i> Save';
   saveBtn.onclick = saveBudgetCats;
 
-  box.appendChild(head);
-  box.appendChild(hint);
-  box.appendChild(list);
-  box.appendChild(saveBtn);
-  overlay.appendChild(box);
-  document.body.appendChild(overlay);
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  dialog.appendChild(head);
+  dialog.appendChild(hint);
+  dialog.appendChild(list);
+  dialog.appendChild(saveBtn);
+  document.body.appendChild(dialog);
+  dialog.showModal();
+  dialog.addEventListener('click', e => { if (e.target === dialog) dialog.close(); });
 }
 
 async function saveBudgetCats() {
   if (!currentUser) return;
-  const checks = document.querySelectorAll('#budget-cat-modal input[data-catid]');
+  const checks = document.querySelectorAll('#budget-cat-dialog input[data-catid]');
   const selected = Array.from(checks)
     .filter(c => c.checked)
     .map((c, i) => ({ user_id: currentUser.id, category_id: c.dataset.catid, sort_order: i }));
@@ -1236,7 +1229,7 @@ async function saveBudgetCats() {
   await sb.from('user_categories').delete().eq('user_id', currentUser.id);
   if (selected.length) await sb.from('user_categories').insert(selected);
 
-  document.getElementById('budget-cat-modal').remove();
+  document.getElementById('budget-cat-dialog').close();
   renderBudgetPage();
 }
 
