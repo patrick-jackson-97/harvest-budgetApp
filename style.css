@@ -2024,3 +2024,71 @@ details[open] .budget-diag-toggle .fa-chevron-down { transform: rotate(180deg); 
 }
 .acct-trend-month-delta.pos { color: var(--green-pos); }
 .acct-trend-month-delta.neg { color: var(--red); }
+
+/* ── Trend tab updates ── */
+.acct-trend-windows {
+  display: flex;
+  gap: 4px;
+}
+
+.acct-trend-win-btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.acct-trend-win-btn:hover  { background: var(--hover, #f5f5f5); color: var(--text-primary); }
+.acct-trend-win-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.acct-trend-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 20px 8px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.acct-trend-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.acct-trend-legend-line {
+  display: inline-block;
+  width: 20px;
+  height: 2px;
+}
+.acct-trend-legend-line.solid  { height: 2.5px; border-radius: 2px; }
+.acct-trend-legend-line.dashed { background: transparent; border-top: 2px dashed; opacity: 0.6; }
+
+.acct-trend-legend-delta {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 700;
+}
+.acct-trend-legend-delta.pos { color: var(--green-pos); }
+.acct-trend-legend-delta.neg { color: var(--red); }
+
+.acct-trend-month-head {
+  font-size: 10px !important;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary) !important;
+  padding-bottom: 6px;
+}
+
+.acct-trend-month-row {
+  display: grid;
+  grid-template-columns: 60px 1fr 1fr auto;
+}
+
+.acct-trend-month-low { color: var(--text-secondary); }
+.acct-trend-month-low.warn { color: var(--amber); font-weight: 600; }

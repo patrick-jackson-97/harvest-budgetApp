@@ -566,121 +566,185 @@ async function loadAcctTransactions(accountId) {
     </div>`;
 }
 
-async function loadAcctTrend(account) {
+let _trendAllMonths = [];   // cache so timeframe buttons don't re-fetch
+let _trendAccount   = null;
+
+async function loadAcctTrend(account, windowMonths) {
   const panel = document.getElementById('acct-tab-trend');
   if (!panel) return;
 
-  const { data: txns } = await sb.from('transactions')
-    .select('date, amount')
-    .eq('account_id', account.id)
-    .eq('user_id', currentUser.id)
-    .order('date', { ascending: true });
+  // Fetch all transactions once; cache for timeframe switching
+  if (_trendAccount?.id !== account.id) {
+    _trendAccount = account;
+    _trendAllMonths = [];
 
-  if (!txns || txns.length === 0) {
-    panel.innerHTML = `<div class="empty-state" style="padding:40px 0"><i class="fa-solid fa-chart-line"></i><p>Not enough data to show a trend yet</p></div>`;
-    return;
+    const { data: txns } = await sb.from('transactions')
+      .select('date, amount')
+      .eq('account_id', account.id)
+      .eq('user_id', currentUser.id)
+      .order('date', { ascending: true });
+
+    if (!txns || txns.length === 0) {
+      panel.innerHTML = `<div class="empty-state" style="padding:40px 0"><i class="fa-solid fa-chart-line"></i><p>Not enough data to show a trend yet</p></div>`;
+      return;
+    }
+
+    // Build per-day running balance
+    const currentBal  = parseFloat(account.balance) || 0;
+    const totalTxnSum = txns.reduce((s, t) => s + parseFloat(t.amount), 0);
+    let runningBal    = currentBal - totalTxnSum;
+
+    // Group transactions by date
+    const byDate = {};
+    txns.forEach(t => {
+      byDate[t.date] = (byDate[t.date] || 0) + parseFloat(t.amount);
+    });
+
+    // Walk day-by-day to track end-of-day balance per month
+    const dates = Object.keys(byDate).sort();
+    const monthData = {}; // ym -> { end, min }
+
+    dates.forEach(d => {
+      runningBal += byDate[d];
+      const ym = d.slice(0, 7);
+      if (!monthData[ym]) monthData[ym] = { end: runningBal, min: runningBal };
+      monthData[ym].end = runningBal;
+      monthData[ym].min = Math.min(monthData[ym].min, runningBal);
+    });
+
+    _trendAllMonths = Object.keys(monthData).sort().map(ym => ({
+      ym,
+      end: monthData[ym].end,
+      min: monthData[ym].min,
+    }));
   }
 
-  // Compute end-of-month balances working backwards from current balance
-  const currentBal = parseFloat(account.balance) || 0;
-  const totalTxnSum = txns.reduce((s, t) => s + parseFloat(t.amount), 0);
-  let runningBal = currentBal - totalTxnSum; // balance before all transactions
+  const allMonths = _trendAllMonths;
+  if (!allMonths.length) return;
 
-  // Build month buckets
-  const monthMap = {};
-  txns.forEach(t => {
-    const ym = t.date.slice(0, 7); // "2024-03"
-    runningBal += parseFloat(t.amount);
-    monthMap[ym] = runningBal; // overwrite = end-of-month value
-  });
+  // Apply timeframe window
+  const window = windowMonths || 'all';
+  const sliced = window === 'all'
+    ? allMonths
+    : allMonths.slice(-parseInt(window));
 
-  const months = Object.keys(monthMap).sort();
-  const values = months.map(m => monthMap[m]);
+  renderTrendChart(account, sliced, window);
+}
 
-  const minVal = Math.min(...values);
-  const maxVal = Math.max(...values);
+function renderTrendChart(account, months, activeWindow) {
+  const panel = document.getElementById('acct-tab-trend');
+  if (!panel) return;
+
+  const endVals = months.map(m => m.end);
+  const minVals = months.map(m => m.min);
+  const allVals = [...endVals, ...minVals];
+
+  const minVal = Math.min(...allVals);
+  const maxVal = Math.max(...allVals);
   const range  = maxVal - minVal || 1;
-
-  // SVG dimensions
-  const W = 480, H = 180, PAD = { top: 16, right: 16, bottom: 32, left: 64 };
-  const chartW = W - PAD.left - PAD.right;
-  const chartH = H - PAD.top  - PAD.bottom;
-  const n = months.length;
-
-  const xScale = i  => PAD.left + (n > 1 ? (i / (n - 1)) * chartW : chartW / 2);
-  const yScale = v  => PAD.top  + chartH - ((v - minVal) / range) * chartH;
-
-  // Path
-  const pts = months.map((_, i) => `${xScale(i).toFixed(1)},${yScale(values[i]).toFixed(1)}`);
-  const linePath = `M ${pts.join(' L ')}`;
-
-  // Fill under line
-  const fillPath = `M ${xScale(0).toFixed(1)},${(PAD.top + chartH).toFixed(1)} L ${pts.join(' L ')} L ${xScale(n-1).toFixed(1)},${(PAD.top + chartH).toFixed(1)} Z`;
-
-  // Y-axis labels (3 ticks)
-  const yTicks = [minVal, minVal + range / 2, maxVal];
-  const yTicksHTML = yTicks.map(v => {
-    const y = yScale(v);
-    return `<text x="${(PAD.left - 6).toFixed(0)}" y="${y.toFixed(0)}" text-anchor="end" dominant-baseline="middle" font-size="10" fill="var(--text-tertiary)">${fmtShort(v)}</text>
-    <line x1="${PAD.left}" y1="${y.toFixed(0)}" x2="${(W - PAD.right).toFixed(0)}" y2="${y.toFixed(0)}" stroke="var(--border)" stroke-width="1" stroke-dasharray="3,3"/>`;
-  }).join('');
-
-  // X-axis labels (show up to 12, evenly spaced)
-  const maxLabels = Math.min(n, 12);
-  const step = Math.max(1, Math.floor(n / maxLabels));
-  const xTicksHTML = months.filter((_, i) => i % step === 0 || i === n - 1).map((m, _, arr) => {
-    const idx = months.indexOf(m);
-    const [yr, mo] = m.split('-');
-    const label = new Date(+yr, +mo - 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-    return `<text x="${xScale(idx).toFixed(0)}" y="${(H - 6).toFixed(0)}" text-anchor="middle" font-size="10" fill="var(--text-tertiary)">${label}</text>`;
-  }).join('');
-
-  // Current balance dot + label
-  const lastX = xScale(n - 1), lastY = yScale(values[n - 1]);
+  const n      = months.length;
   const isDebt = isDebtAccount(account);
   const lineColor = isDebt ? 'var(--red)' : 'var(--accent)';
 
-  const earliest = new Date(months[0] + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const latest   = new Date(months[n-1] + '-01').toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const W = 480, H = 190, PAD = { top: 16, right: 16, bottom: 32, left: 64 };
+  const chartW = W - PAD.left - PAD.right;
+  const chartH = H - PAD.top  - PAD.bottom;
+
+  const xScale = i => PAD.left + (n > 1 ? (i / (n - 1)) * chartW : chartW / 2);
+  const yScale = v => PAD.top  + chartH - ((v - minVal) / range) * chartH;
+
+  // End-of-month line
+  const endPts   = months.map((_, i) => `${xScale(i).toFixed(1)},${yScale(endVals[i]).toFixed(1)}`);
+  const linePath = `M ${endPts.join(' L ')}`;
+  const fillPath = `M ${xScale(0).toFixed(1)},${(PAD.top + chartH).toFixed(1)} L ${endPts.join(' L ')} L ${xScale(n-1).toFixed(1)},${(PAD.top + chartH).toFixed(1)} Z`;
+
+  // Minimum balance dashed line
+  const minPts    = months.map((_, i) => `${xScale(i).toFixed(1)},${yScale(minVals[i]).toFixed(1)}`);
+  const minPath   = `M ${minPts.join(' L ')}`;
+
+  // Y-axis ticks
+  const yTicks = [minVal, minVal + range / 2, maxVal];
+  const yTicksHTML = yTicks.map(v => {
+    const y = yScale(v);
+    return `
+      <text x="${(PAD.left - 6)}" y="${y.toFixed(0)}" text-anchor="end" dominant-baseline="middle" font-size="10" fill="var(--text-tertiary)">${fmtShort(v)}</text>
+      <line x1="${PAD.left}" y1="${y.toFixed(0)}" x2="${W - PAD.right}" y2="${y.toFixed(0)}" stroke="var(--border)" stroke-width="1" stroke-dasharray="3,3"/>`;
+  }).join('');
+
+  // X-axis labels
+  const maxLabels  = Math.min(n, 12);
+  const step       = Math.max(1, Math.floor(n / maxLabels));
+  const xTicksHTML = months.map((m, i) => {
+    if (i % step !== 0 && i !== n - 1) return '';
+    const [yr, mo] = m.ym.split('-');
+    const label = new Date(+yr, +mo - 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    return `<text x="${xScale(i).toFixed(0)}" y="${H - 6}" text-anchor="middle" font-size="10" fill="var(--text-tertiary)">${label}</text>`;
+  }).join('');
+
+  const lastX = xScale(n - 1), lastY = yScale(endVals[n - 1]);
+  const change = endVals[n - 1] - endVals[0];
+  const earliest = new Date(months[0].ym + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  const latest   = new Date(months[n-1].ym + '-01').toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+
+  const WINDOWS = [
+    { key: '3',   label: '3M' },
+    { key: '6',   label: '6M' },
+    { key: '12',  label: '1Y' },
+    { key: '24',  label: '2Y' },
+    { key: 'all', label: 'All' },
+  ];
 
   panel.innerHTML = `
     <div class="acct-trend-header">
       <div>
-        <div class="acct-trend-label">Balance history</div>
         <div class="acct-trend-range">${earliest} – ${latest} · ${n} months</div>
       </div>
-      <div style="text-align:right">
-        <div class="acct-trend-label">Change</div>
-        <div class="acct-trend-delta ${values[n-1] >= values[0] ? 'pos' : 'neg'}">
-          ${values[n-1] >= values[0] ? '+' : ''}${fmtFull(values[n-1] - values[0])}
-        </div>
+      <div class="acct-trend-windows">
+        ${WINDOWS.map(w => `
+          <button class="acct-trend-win-btn ${activeWindow == w.key ? 'active' : ''}"
+            onclick="renderTrendChart(_trendAccount, _trendAllMonths.slice(${w.key === 'all' ? '' : '-' + w.key}), '${w.key}')">
+            ${w.label}
+          </button>`).join('')}
       </div>
+    </div>
+    <div class="acct-trend-legend">
+      <span class="acct-trend-legend-item"><span class="acct-trend-legend-line solid" style="background:${lineColor}"></span>End of month</span>
+      <span class="acct-trend-legend-item"><span class="acct-trend-legend-line dashed" style="border-color:${lineColor}"></span>Monthly low</span>
+      <span class="acct-trend-legend-delta ${change >= 0 ? 'pos' : 'neg'}">${change >= 0 ? '▲' : '▼'} ${fmtFull(Math.abs(change))}</span>
     </div>
     <div class="acct-trend-chart-wrap">
       <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">
         <defs>
-          <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="${lineColor}" stop-opacity="0.18"/>
+          <linearGradient id="trendFill${account.id}" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="${lineColor}" stop-opacity="0.15"/>
             <stop offset="100%" stop-color="${lineColor}" stop-opacity="0.01"/>
           </linearGradient>
         </defs>
         ${yTicksHTML}
-        <path d="${fillPath}" fill="url(#trendFill)"/>
+        <path d="${fillPath}" fill="url(#trendFill${account.id})"/>
+        <path d="${minPath}" fill="none" stroke="${lineColor}" stroke-width="1.5" stroke-dasharray="4,3" stroke-opacity="0.5" stroke-linejoin="round"/>
         <path d="${linePath}" fill="none" stroke="${lineColor}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
         <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="4" fill="${lineColor}"/>
         ${xTicksHTML}
       </svg>
     </div>
     <div class="acct-trend-months">
-      ${months.map((m, i) => {
-        const [yr, mo] = m.split('-');
-        const label = new Date(+yr, +mo - 1).toLocaleDateString('en-US', { month: 'short' });
-        const delta = i > 0 ? values[i] - values[i-1] : 0;
+      <div class="acct-trend-month-row acct-trend-month-head">
+        <span>Month</span><span>End balance</span><span>Low</span><span>Change</span>
+      </div>
+      ${[...months].reverse().map((m, i, arr) => {
+        const origIdx = months.length - 1 - i;
+        const [yr, mo] = m.ym.split('-');
+        const label = new Date(+yr, +mo - 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+        const delta = origIdx > 0 ? endVals[origIdx] - endVals[origIdx - 1] : null;
         return `
           <div class="acct-trend-month-row">
-            <span class="acct-trend-month-lbl">${label} '${yr.slice(2)}</span>
-            <span class="acct-trend-month-bal">${fmtFull(values[i])}</span>
-            ${i > 0 ? `<span class="acct-trend-month-delta ${delta >= 0 ? 'pos' : 'neg'}">${delta >= 0 ? '+' : ''}${fmtShort(delta)}</span>` : '<span></span>'}
+            <span class="acct-trend-month-lbl">${label}</span>
+            <span class="acct-trend-month-bal">${fmtFull(m.end)}</span>
+            <span class="acct-trend-month-low ${m.min < m.end * 0.95 ? 'warn' : ''}">${fmtFull(m.min)}</span>
+            ${delta !== null
+              ? `<span class="acct-trend-month-delta ${delta >= 0 ? 'pos' : 'neg'}">${delta >= 0 ? '+' : ''}${fmtShort(delta)}</span>`
+              : '<span>—</span>'}
           </div>`;
       }).join('')}
     </div>`;
