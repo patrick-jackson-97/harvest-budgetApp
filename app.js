@@ -990,9 +990,10 @@ async function renderBudgetPage() {
   const totalSpend = Object.values(spendByCat).reduce((s, v) => s + v, 0);
   const totalGoal  = (budgets || []).reduce((s, b) => s + parseFloat(b.goal), 0);
 
+  const BUDGET_CATS = new Set(['income', 'cc_payment', 'savings_cat']); // never shown in budget
   const cats = (userCats && userCats.length)
     ? userCats.map(c => c.category_id)
-    : Object.keys(CAT_META);
+    : Object.keys(CAT_META).filter(k => !BUDGET_CATS.has(k));
 
   content.innerHTML = `
     ${renderIncomeSection(incomeGoal, actualIncome)}
@@ -1018,7 +1019,12 @@ async function renderBudgetPage() {
       </div>
     </div>
     <div class="section">
-      <div class="section-title"><i class="fa-solid fa-scale-balanced"></i> Spending by Category</div>
+      <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+        <span><i class="fa-solid fa-scale-balanced"></i> Spending by Category</span>
+        <button class="btn-ghost btn-sm" onclick="openBudgetCatManager()">
+          <i class="fa-solid fa-sliders"></i> Manage
+        </button>
+      </div>
       <div class="budget-cat-list">
         ${cats.map(catId => renderBudgetCatRow(catId, budgets || [], spendByCat)).join('')}
       </div>
@@ -1141,6 +1147,57 @@ async function saveBudgetGoals() {
   if (upserts.length === 0) return;
   const { error } = await sb.from('budgets').upsert(upserts, { onConflict: 'user_id,month,category' });
   if (!error) renderBudgetPage();
+}
+
+function openBudgetCatManager() {
+  const HIDDEN = new Set(['income', 'cc_payment', 'savings_cat']);
+  const available = Object.entries(CAT_META).filter(([k]) => !HIDDEN.has(k));
+
+  // Get current active cats from rendered list
+  const activeCats = new Set(
+    Array.from(document.querySelectorAll('.budget-goal-input[data-cat]')).map(el => el.dataset.cat)
+  );
+
+  const existing = document.getElementById('budget-cat-modal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'budget-cat-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML = `
+    <div style="background:var(--surface);border-radius:16px;padding:24px;width:360px;max-height:80vh;display:flex;flex-direction:column;gap:16px;box-shadow:0 8px 32px rgba(0,0,0,0.18)">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <strong style="font-size:15px">Budget Categories</strong>
+        <button class="btn-ghost btn-xs" onclick="document.getElementById('budget-cat-modal').remove()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <p style="font-size:13px;color:var(--text-secondary);margin:0">Check the categories you want to track in your budget.</p>
+      <div style="overflow-y:auto;display:flex;flex-direction:column;gap:8px">
+        ${available.map(([k, v]) => `
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px;border-radius:8px;border:1px solid var(--border)">
+            <input type="checkbox" data-catid="${k}" ${activeCats.has(k) ? 'checked' : ''} style="width:16px;height:16px;accent-color:var(--accent)">
+            <i class="${v.icon}" style="width:16px;text-align:center;color:var(--text-secondary)"></i>
+            <span style="font-size:14px">${v.label}</span>
+          </label>`).join('')}
+      </div>
+      <button class="btn-primary" onclick="saveBudgetCats()"><i class="fa-solid fa-check"></i> Save</button>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function saveBudgetCats() {
+  if (!currentUser) return;
+  const checks = document.querySelectorAll('#budget-cat-modal input[data-catid]');
+  const selected = Array.from(checks)
+    .filter(c => c.checked)
+    .map((c, i) => ({ user_id: currentUser.id, category_id: c.dataset.catid, sort_order: i }));
+
+  // Replace all user_categories for this user
+  await sb.from('user_categories').delete().eq('user_id', currentUser.id);
+  if (selected.length) await sb.from('user_categories').insert(selected);
+
+  document.getElementById('budget-cat-modal').remove();
+  renderBudgetPage();
 }
 
 async function updateIncomeGoal(value) {
