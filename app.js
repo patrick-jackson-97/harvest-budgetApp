@@ -381,7 +381,7 @@ async function renderBudgetPage() {
     sb.from('budgets').select('*').eq('user_id', currentUser.id).eq('month', budgetMonth),
     sb.from('income_goals').select('*').eq('user_id', currentUser.id).eq('month', budgetMonth),
     sb.from('transactions').select('*').eq('user_id', currentUser.id)
-      .gte('date', budgetMonth + '-01').lte('date', budgetMonth + '-31'),
+      .gte('date', budgetMonth + '-01').lt('date', offsetYM(budgetMonth, 1) + '-01'),
     sb.from('user_categories').select('*').eq('user_id', currentUser.id).order('sort_order'),
   ]);
 
