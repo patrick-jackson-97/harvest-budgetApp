@@ -1023,10 +1023,20 @@ async function renderBudgetPage() {
     <div class="section">
       <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
         <span><i class="fa-solid fa-scale-balanced"></i> Spending by Category</span>
-        <button class="btn-ghost btn-sm" onclick="openBudgetCatManager()">
+        <button class="btn-ghost btn-sm" onclick="toggleBudgetCatManager()">
           <i class="fa-solid fa-sliders"></i> Manage
         </button>
       </div>
+
+      <div id="budget-cat-manager" style="display:none;margin-bottom:16px;padding:16px;background:var(--bg);border-radius:12px;border:1px solid var(--border)">
+        <p style="font-size:13px;color:var(--text-secondary);margin:0 0 12px">Check the categories to show in your budget:</p>
+        <div id="budget-cat-checkboxes" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px"></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-primary btn-sm" onclick="saveBudgetCats()"><i class="fa-solid fa-check"></i> Save</button>
+          <button class="btn-ghost btn-sm" onclick="toggleBudgetCatManager()">Cancel</button>
+        </div>
+      </div>
+
       <div class="budget-cat-list">
         ${cats.map(catId => renderBudgetCatRow(catId, budgets || [], spendByCat)).join('')}
       </div>
@@ -1151,76 +1161,44 @@ async function saveBudgetGoals() {
   if (!error) renderBudgetPage();
 }
 
-function openBudgetCatManager() {
+function toggleBudgetCatManager() {
+  const panel = document.getElementById('budget-cat-manager');
+  if (!panel) return;
+  const isOpen = panel.style.display !== 'none';
+  if (isOpen) { panel.style.display = 'none'; return; }
+
   const HIDDEN     = new Set(['income', 'cc_payment', 'savings_cat']);
   const activeCats = _budgetUserCats.length
     ? new Set(_budgetUserCats.map(c => c.category_id))
     : new Set(Object.keys(CAT_META).filter(k => !HIDDEN.has(k)));
   const available  = Object.entries(CAT_META).filter(([k]) => !HIDDEN.has(k));
 
-  const existing = document.getElementById('budget-cat-dialog');
-  if (existing) existing.remove();
-
-  const dialog = document.createElement('dialog');
-  dialog.id = 'budget-cat-dialog';
-  dialog.style.cssText = 'border:none;border-radius:16px;padding:24px;width:360px;max-height:80vh;display:flex;flex-direction:column;gap:16px;box-shadow:0 8px 32px rgba(0,0,0,0.25);background:var(--surface)';
-
-  const head = document.createElement('div');
-  head.style.cssText = 'display:flex;align-items:center;justify-content:space-between';
-  const title = document.createElement('strong');
-  title.style.fontSize = '15px';
-  title.textContent = 'Budget Categories';
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'btn-ghost btn-xs';
-  closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-  closeBtn.onclick = () => dialog.close();
-  head.appendChild(title);
-  head.appendChild(closeBtn);
-
-  const hint = document.createElement('p');
-  hint.style.cssText = 'font-size:13px;color:var(--text-secondary);margin:0';
-  hint.textContent = 'Check the categories you want to track in your budget.';
-
-  const list = document.createElement('div');
-  list.style.cssText = 'overflow-y:auto;display:flex;flex-direction:column;gap:8px;flex:1';
-
+  const container = document.getElementById('budget-cat-checkboxes');
+  container.innerHTML = '';
   available.forEach(([k, v]) => {
     const label = document.createElement('label');
-    label.style.cssText = 'display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px;border-radius:8px;border:1px solid var(--border)';
+    label.style.cssText = 'display:flex;align-items:center;gap:8px;cursor:pointer;padding:6px 8px;border-radius:8px;border:1px solid var(--border);font-size:13px';
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.dataset.catid = k;
     cb.checked = activeCats.has(k);
-    cb.style.cssText = 'width:16px;height:16px;flex-shrink:0';
     const icon = document.createElement('i');
     icon.className = v.icon;
-    icon.style.cssText = 'width:16px;text-align:center;color:var(--text-secondary)';
+    icon.style.cssText = 'color:var(--text-secondary);width:14px;text-align:center';
     const span = document.createElement('span');
-    span.style.fontSize = '14px';
     span.textContent = v.label;
     label.appendChild(cb);
     label.appendChild(icon);
     label.appendChild(span);
-    list.appendChild(label);
+    container.appendChild(label);
   });
 
-  const saveBtn = document.createElement('button');
-  saveBtn.className = 'btn-primary';
-  saveBtn.innerHTML = '<i class="fa-solid fa-check"></i> Save';
-  saveBtn.onclick = saveBudgetCats;
-
-  dialog.appendChild(head);
-  dialog.appendChild(hint);
-  dialog.appendChild(list);
-  dialog.appendChild(saveBtn);
-  document.body.appendChild(dialog);
-  dialog.showModal();
-  dialog.addEventListener('click', e => { if (e.target === dialog) dialog.close(); });
+  panel.style.display = 'block';
 }
 
 async function saveBudgetCats() {
   if (!currentUser) return;
-  const checks = document.querySelectorAll('#budget-cat-dialog input[data-catid]');
+  const checks = document.querySelectorAll('#budget-cat-checkboxes input[data-catid]');
   const selected = Array.from(checks)
     .filter(c => c.checked)
     .map((c, i) => ({ user_id: currentUser.id, category_id: c.dataset.catid, sort_order: i }));
@@ -1229,7 +1207,7 @@ async function saveBudgetCats() {
   await sb.from('user_categories').delete().eq('user_id', currentUser.id);
   if (selected.length) await sb.from('user_categories').insert(selected);
 
-  document.getElementById('budget-cat-dialog').close();
+  document.getElementById('budget-cat-manager').style.display = 'none';
   renderBudgetPage();
 }
 
