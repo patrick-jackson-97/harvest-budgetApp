@@ -734,7 +734,7 @@ function renderAcctTrendChart(account, months, activeWindow) {
   const legend = document.createElement('div');
   legend.className = 'acct-trend-legend';
   legend.innerHTML =
-    '<span class="acct-trend-legend-item"><span class="acct-trend-legend-line solid" style="background:' + lineColor + '"></span>Monthly low</span>' +
+    '<span class="acct-trend-legend-item"><span class="acct-trend-legend-line solid" style="background:' + lineColor + '"></span>' + (account.type === 'checking' ? 'Monthly low' : 'End of month') + '</span>' +
     '<span class="acct-trend-legend-delta ' + (change >= 0 ? 'pos' : 'neg') + '">' + (change >= 0 ? '▲' : '▼') + ' ' + fmtFull(Math.abs(change)) + '</span>';
   panel.appendChild(legend);
 
@@ -756,8 +756,8 @@ function renderAcctTrendChart(account, months, activeWindow) {
       labels: labels,
       datasets: [
         {
-          label: 'Monthly low',
-          data: minVals,
+          label: account.type === 'checking' ? 'Monthly low' : 'End of month',
+          data: account.type === 'checking' ? minVals : endVals,
           borderColor: lineColor,
           backgroundColor: lineColor + '22',
           borderWidth: 2.5,
