@@ -13,6 +13,9 @@ alter table transactions add column if not exists plaid_transaction_id text;
 create unique index if not exists transactions_plaid_txn_id_idx
   on transactions(plaid_transaction_id) where plaid_transaction_id is not null;
 
+-- Add Plaid account ID to transactions (so we can patch account_id after user maps accounts)
+alter table transactions add column if not exists raw_plaid_account_id text;
+
 -- Plaid items: one row per connected bank login
 -- Access tokens are sensitive — NO user-facing RLS policy.
 -- Only accessible server-side via service role key.

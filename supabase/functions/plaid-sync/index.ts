@@ -92,8 +92,9 @@ Deno.serve(async (req) => {
           type:                 t.amount > 0 ? 'debit' : 'credit',
           raw_category:         t.personal_finance_category?.primary
                                   ?.replace(/_/g, ' ').toLowerCase() || null,
-          category:             'other',
-          plaid_transaction_id: t.transaction_id,
+          category:              'other',
+          plaid_transaction_id:  t.transaction_id,
+          raw_plaid_account_id:  t.account_id,
         }));
 
         const CHUNK = 500;

@@ -169,6 +169,7 @@ async function confirmAccountMapping() {
       if (syncRow) syncRow.style.display = 'flex';
     });
     renderDashboard();
+    if (typeof renderExpensesPage === 'function') renderExpensesPage();
 
   } catch (e) {
     console.error('Account mapping error:', e);
