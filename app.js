@@ -1021,7 +1021,7 @@ async function renderBudgetPage() {
     <div class="section">
       <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
         <span><i class="fa-solid fa-scale-balanced"></i> Spending by Category</span>
-        <button class="btn-ghost btn-sm" onclick="openBudgetCatManager()">
+        <button class="btn-ghost btn-sm" onclick="openBudgetCatManager(${JSON.stringify((userCats||[]).map(c=>c.category_id))})">
           <i class="fa-solid fa-sliders"></i> Manage
         </button>
       </div>
@@ -1149,40 +1149,78 @@ async function saveBudgetGoals() {
   if (!error) renderBudgetPage();
 }
 
-function openBudgetCatManager() {
-  const HIDDEN = new Set(['income', 'cc_payment', 'savings_cat']);
-  const available = Object.entries(CAT_META).filter(([k]) => !HIDDEN.has(k));
-
-  // Get current active cats from rendered list
-  const activeCats = new Set(
-    Array.from(document.querySelectorAll('.budget-goal-input[data-cat]')).map(el => el.dataset.cat)
-  );
+function openBudgetCatManager(activeCatIds) {
+  const HIDDEN   = new Set(['income', 'cc_payment', 'savings_cat']);
+  const activeCats = new Set(activeCatIds || []);
+  const available  = Object.entries(CAT_META).filter(([k]) => !HIDDEN.has(k));
 
   const existing = document.getElementById('budget-cat-modal');
   if (existing) existing.remove();
 
-  const modal = document.createElement('div');
-  modal.id = 'budget-cat-modal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;display:flex;align-items:center;justify-content:center';
-  modal.innerHTML = `
-    <div style="background:var(--surface);border-radius:16px;padding:24px;width:360px;max-height:80vh;display:flex;flex-direction:column;gap:16px;box-shadow:0 8px 32px rgba(0,0,0,0.18)">
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <strong style="font-size:15px">Budget Categories</strong>
-        <button class="btn-ghost btn-xs" onclick="document.getElementById('budget-cat-modal').remove()"><i class="fa-solid fa-xmark"></i></button>
-      </div>
-      <p style="font-size:13px;color:var(--text-secondary);margin:0">Check the categories you want to track in your budget.</p>
-      <div style="overflow-y:auto;display:flex;flex-direction:column;gap:8px">
-        ${available.map(([k, v]) => `
-          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px;border-radius:8px;border:1px solid var(--border)">
-            <input type="checkbox" data-catid="${k}" ${activeCats.has(k) ? 'checked' : ''} style="width:16px;height:16px;accent-color:var(--accent)">
-            <i class="${v.icon}" style="width:16px;text-align:center;color:var(--text-secondary)"></i>
-            <span style="font-size:14px">${v.label}</span>
-          </label>`).join('')}
-      </div>
-      <button class="btn-primary" onclick="saveBudgetCats()"><i class="fa-solid fa-check"></i> Save</button>
-    </div>`;
-  document.body.appendChild(modal);
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  const overlay = document.createElement('div');
+  overlay.id = 'budget-cat-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center';
+
+  const box = document.createElement('div');
+  box.style.cssText = 'background:var(--surface);border-radius:16px;padding:24px;width:360px;max-height:80vh;display:flex;flex-direction:column;gap:16px;box-shadow:0 8px 32px rgba(0,0,0,0.18)';
+
+  // Header
+  const head = document.createElement('div');
+  head.style.cssText = 'display:flex;align-items:center;justify-content:space-between';
+  const title = document.createElement('strong');
+  title.style.fontSize = '15px';
+  title.textContent = 'Budget Categories';
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn-ghost btn-xs';
+  closeBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+  closeBtn.onclick = () => overlay.remove();
+  head.appendChild(title);
+  head.appendChild(closeBtn);
+
+  const hint = document.createElement('p');
+  hint.style.cssText = 'font-size:13px;color:var(--text-secondary);margin:0';
+  hint.textContent = 'Check the categories you want to track in your budget.';
+
+  // List
+  const list = document.createElement('div');
+  list.style.cssText = 'overflow-y:auto;display:flex;flex-direction:column;gap:8px';
+
+  available.forEach(([k, v]) => {
+    const label = document.createElement('label');
+    label.style.cssText = 'display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px;border-radius:8px;border:1px solid var(--border)';
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.dataset.catid = k;
+    cb.checked = activeCats.has(k);
+    cb.style.cssText = 'width:16px;height:16px;accent-color:var(--accent);flex-shrink:0';
+
+    const icon = document.createElement('i');
+    icon.className = v.icon;
+    icon.style.cssText = 'width:16px;text-align:center;color:var(--text-secondary)';
+
+    const span = document.createElement('span');
+    span.style.fontSize = '14px';
+    span.textContent = v.label;
+
+    label.appendChild(cb);
+    label.appendChild(icon);
+    label.appendChild(span);
+    list.appendChild(label);
+  });
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'btn-primary';
+  saveBtn.innerHTML = '<i class="fa-solid fa-check"></i> Save';
+  saveBtn.onclick = saveBudgetCats;
+
+  box.appendChild(head);
+  box.appendChild(hint);
+  box.appendChild(list);
+  box.appendChild(saveBtn);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
 
 async function saveBudgetCats() {
