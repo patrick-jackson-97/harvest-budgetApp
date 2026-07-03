@@ -402,10 +402,11 @@ async function openAccountDrawer(account) {
   document.body.appendChild(overlay);
   requestAnimationFrame(() => overlay.querySelector('.acct-drawer').classList.add('open'));
 
-  // Single fetch for all tabs — avoids 3 separate round-trips
+  // Lightweight fetch (date + amount only) for overview + trend — fast, no row limit
+  // Full transaction details are lazy-loaded when the Transactions tab is clicked
   const [txnRes, itemsRes] = await Promise.all([
     sb.from('transactions')
-      .select('date, amount, merchant, category, plaid_transaction_id')
+      .select('date, amount, plaid_transaction_id')
       .eq('account_id', account.id)
       .eq('user_id', currentUser.id)
       .order('date', { ascending: false }),
@@ -415,18 +416,37 @@ async function openAccountDrawer(account) {
   ]);
 
   const txns  = txnRes.data || [];
-  const items = (itemsRes.items || []);
+  const items = itemsRes.items || [];
 
   populateAcctOverview(account, txns, items);
   populateAcctTrend(account, txns);
-  populateAcctTransactions(txns);
+  // Transactions tab loaded on demand
+  document.getElementById('acct-tab-transactions')._accountId = account.id;
+  document.getElementById('acct-tab-transactions').innerHTML =
+    `<div class="acct-detail-loading" style="padding:32px 0;text-align:center;color:var(--text-tertiary);font-size:13px">
+      <i class="fa-solid fa-hand-pointer"></i> Click the Transactions tab to load
+    </div>`;
 }
 
 function switchAcctTab(tab, btn) {
   document.querySelectorAll('.acct-tab-panel').forEach(p => p.style.display = 'none');
   document.querySelectorAll('.acct-tab').forEach(b => b.classList.remove('active'));
-  document.getElementById(`acct-tab-${tab}`).style.display = 'block';
+  const panel = document.getElementById(`acct-tab-${tab}`);
+  panel.style.display = 'block';
   btn.classList.add('active');
+
+  // Lazy-load transactions tab on first click
+  if (tab === 'transactions' && panel._accountId && !panel._loaded) {
+    panel._loaded = true;
+    panel.innerHTML = `<div class="acct-detail-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div>`;
+    sb.from('transactions')
+      .select('date, merchant, amount, category, plaid_transaction_id')
+      .eq('account_id', panel._accountId)
+      .eq('user_id', currentUser.id)
+      .order('date', { ascending: false })
+      .limit(500)
+      .then(({ data }) => populateAcctTransactions(data || []));
+  }
 }
 
 function populateAcctOverview(account, txns, items) {
