@@ -905,3 +905,20 @@ input, select, textarea { font-family: inherit; }
   align-items: center;
   gap: 10px;
 }
+
+/* ── Manual mapping extras ── */
+.mapping-hint {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+.manual-mapping-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 8px;
+}
+.mapping-field { display: flex; flex-direction: column; gap: 4px; }
+.mapping-field-hint { font-size: 11px; color: var(--text-tertiary); margin: 0 0 4px; line-height: 1.4; }
+.req { color: var(--red); }
