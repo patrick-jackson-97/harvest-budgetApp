@@ -659,7 +659,8 @@ function populateAcctTrend(account, txnsDesc) {
   console.log('[2a] months computed:', _trendAllMonths.length);
   if (!_trendAllMonths.length) return;
   renderTrendChart(account, _trendAllMonths, 'all');
-  console.log('[2b] renderTrendChart done');
+  const _p = document.getElementById('acct-tab-trend');
+  console.log('[2b] panel innerHTML length after render:', _p ? _p.innerHTML.length : 'PANEL NOT FOUND');
 }
 
 function renderTrendChart(account, months, activeWindow) {
