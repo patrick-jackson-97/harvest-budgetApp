@@ -690,19 +690,19 @@ async function renderBudgetPage() {
     sb.from('user_categories').select('*').eq('user_id', currentUser.id).order('sort_order'),
   ]);
 
-  // Exclude CC payments from all calculations — they're transfers between your own
-  // accounts, not real income or spending. Actual purchases are already captured as
-  // individual CC transactions.
-  const realTxns = (transactions || []).filter(t => t.category !== 'cc_payment');
+  // Exclude CC payments and savings/investing transfers — money moving between your
+  // own accounts, not real income or spending.
+  const EXCLUDE_CATS = new Set(['cc_payment', 'savings_cat']);
+  const realTxns = (transactions || []).filter(t => !EXCLUDE_CATS.has(t.category));
 
-  const actualIncome = realTxns
-    .filter(t => parseFloat(t.amount) > 0)
-    .reduce((s, t) => s + parseFloat(t.amount), 0);
+  const incomeTxns = realTxns.filter(t => parseFloat(t.amount) > 0);
+  const actualIncome = incomeTxns.reduce((s, t) => s + parseFloat(t.amount), 0);
 
   const incomeGoal = (incomeGoals || []).reduce((s, g) => s + parseFloat(g.goal), 0);
 
+  const spendTxns = realTxns.filter(t => parseFloat(t.amount) < 0);
   const spendByCat = {};
-  realTxns.filter(t => parseFloat(t.amount) < 0).forEach(t => {
+  spendTxns.forEach(t => {
     const cat = t.category || 'other';
     spendByCat[cat] = (spendByCat[cat] || 0) + Math.abs(parseFloat(t.amount));
   });
@@ -745,7 +745,36 @@ async function renderBudgetPage() {
       <button class="btn-primary" style="margin-top:16px" onclick="saveBudgetGoals()">
         <i class="fa-solid fa-floppy-disk"></i> Save goals
       </button>
-    </div>`;
+    </div>
+    <details class="budget-diag-section">
+      <summary class="budget-diag-toggle">
+        <i class="fa-solid fa-bug"></i> What's being counted?
+        <i class="fa-solid fa-chevron-down" style="margin-left:auto;font-size:11px;color:var(--text-tertiary)"></i>
+      </summary>
+      <div class="budget-diag-body">
+        <div class="budget-diag-col">
+          <div class="budget-diag-head">Top income transactions</div>
+          ${incomeTxns.sort((a,b) => parseFloat(b.amount)-parseFloat(a.amount)).slice(0,8).map(t => `
+            <div class="budget-diag-row">
+              <span class="budget-diag-date">${t.date}</span>
+              <span class="budget-diag-merchant">${t.merchant || '—'}</span>
+              <span class="budget-diag-cat">${CAT_META[t.category]?.label || t.category || 'other'}</span>
+              <span class="budget-diag-amt income">${fmtFull(parseFloat(t.amount))}</span>
+            </div>`).join('')}
+        </div>
+        <div class="budget-diag-col">
+          <div class="budget-diag-head">Top spending transactions</div>
+          ${spendTxns.sort((a,b) => parseFloat(a.amount)-parseFloat(b.amount)).slice(0,8).map(t => `
+            <div class="budget-diag-row">
+              <span class="budget-diag-date">${t.date}</span>
+              <span class="budget-diag-merchant">${t.merchant || '—'}</span>
+              <span class="budget-diag-cat">${CAT_META[t.category]?.label || t.category || 'other'}</span>
+              <span class="budget-diag-amt expense">${fmtFull(Math.abs(parseFloat(t.amount)))}</span>
+            </div>`).join('')}
+        </div>
+        <p class="budget-diag-note">Excluded from calculations: CC Payments, Savings/Investing transfers. To fix miscategorized transactions, go to the <a href="#" onclick="showPage('expenses');return false">Expenses page</a>.</p>
+      </div>
+    </details>`;
 }
 
 function renderIncomeSection(goal, actual) {
