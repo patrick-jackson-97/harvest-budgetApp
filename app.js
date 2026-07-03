@@ -478,7 +478,7 @@ function switchAcctTab(tab, btn) {
   // Lazy-render trend chart on first click (Chart.js needs visible canvas)
   if (tab === 'trend' && _trendAllMonths && _trendAllMonths.length && !panel._chartRendered) {
     panel._chartRendered = true;
-    renderTrendChart(_trendAccount, _trendAllMonths, 'all');
+    renderAcctTrendChart(_trendAccount, _trendAllMonths, 'all');
   }
 
   // Lazy-load transactions tab on first click
@@ -674,13 +674,13 @@ function populateAcctTrend(account, txnsDesc) {
   const trendPanel = document.getElementById('acct-tab-trend');
   if (trendPanel && trendPanel.style.display !== 'none' && !trendPanel._chartRendered) {
     trendPanel._chartRendered = true;
-    renderTrendChart(_trendAccount, _trendAllMonths, 'all');
+    renderAcctTrendChart(_trendAccount, _trendAllMonths, 'all');
   }
 }
 
 let _trendChartInstance = null;
 
-function renderTrendChart(account, months, activeWindow) {
+function renderAcctTrendChart(account, months, activeWindow) {
   const panel = document.getElementById('acct-tab-trend');
   if (!panel) return;
 
