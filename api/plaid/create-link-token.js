@@ -7,10 +7,8 @@ module.exports = async function handler(req, res) {
   const { user_id } = req.body || {};
   if (!user_id) return res.status(400).json({ error: 'user_id required' });
 
-  const plaidEnv = process.env.PLAID_ENV || 'sandbox';
-
   try {
-    const r = await fetch(`https://${plaidEnv}.plaid.com/link/token/create`, {
+    const r = await fetch(`https://api.plaid.com/link/token/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

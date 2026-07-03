@@ -10,11 +10,10 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'public_token and user_id required' });
   }
 
-  const plaidEnv = process.env.PLAID_ENV || 'sandbox';
 
   try {
     // 1. Exchange public_token for access_token
-    const exchangeRes = await fetch(`https://${plaidEnv}.plaid.com/item/public_token/exchange`, {
+    const exchangeRes = await fetch(`https://api.plaid.com/item/public_token/exchange`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -36,7 +35,7 @@ module.exports = async function handler(req, res) {
     });
 
     // 3. Fetch Plaid accounts and upsert into our accounts table
-    const acctRes = await fetch(`https://${plaidEnv}.plaid.com/accounts/get`, {
+    const acctRes = await fetch(`https://api.plaid.com/accounts/get`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

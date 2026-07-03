@@ -8,7 +8,6 @@ module.exports = async function handler(req, res) {
   const { user_id } = req.body || {};
   if (!user_id) return res.status(400).json({ error: 'user_id required' });
 
-  const plaidEnv = process.env.PLAID_ENV || 'sandbox';
 
   try {
     // 1. Get all Plaid items for this user
@@ -41,7 +40,7 @@ module.exports = async function handler(req, res) {
         };
         if (cursor) body.cursor = cursor;
 
-        const syncRes = await fetch(`https://${plaidEnv}.plaid.com/transactions/sync`, {
+        const syncRes = await fetch(`https://api.plaid.com/transactions/sync`, {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify(body),
