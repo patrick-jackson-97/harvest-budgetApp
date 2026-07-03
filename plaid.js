@@ -5,6 +5,20 @@
 
 'use strict';
 
+const EDGE_BASE = 'https://gvdbwnkhksdvauopjfnf.supabase.co/functions/v1';
+
+async function edgeFetch(path, body) {
+  const { data: { session } } = await sb.auth.getSession();
+  return fetch(`${EDGE_BASE}/${path}`, {
+    method:  'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      'Authorization': `Bearer ${session?.access_token}`,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
 /* ── CONNECT: open Plaid Link ── */
 async function initPlaidLink() {
   if (!currentUser) return;
@@ -14,11 +28,7 @@ async function initPlaidLink() {
   clearPlaidStatus();
 
   try {
-    const res = await fetch('/api/plaid/create-link-token', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ user_id: currentUser.id }),
-    });
+    const res = await edgeFetch('plaid-create-link-token', {});
     const { link_token, error } = await res.json();
     if (error) throw new Error(error);
 
@@ -52,15 +62,10 @@ async function handlePlaidSuccess(public_token, metadata) {
 
   try {
     // Exchange public_token server-side (keeps access_token off the browser)
-    const exchangeRes = await fetch('/api/plaid/exchange-token', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        public_token,
-        user_id:          currentUser.id,
-        institution_name: metadata.institution?.name || '',
-        institution_id:   metadata.institution?.institution_id || '',
-      }),
+    const exchangeRes = await edgeFetch('plaid-exchange-token', {
+      public_token,
+      institution_name: metadata.institution?.name || '',
+      institution_id:   metadata.institution?.institution_id || '',
     });
     const exchangeData = await exchangeRes.json();
     if (!exchangeData.success) throw new Error(exchangeData.error);
@@ -68,11 +73,7 @@ async function handlePlaidSuccess(public_token, metadata) {
     showPlaidStatus('loading', 'Syncing transactions…');
 
     // Pull transactions
-    const syncRes = await fetch('/api/plaid/sync', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ user_id: currentUser.id }),
-    });
+    const syncRes = await edgeFetch('plaid-sync', {});
     const syncData = await syncRes.json();
 
     setPlaidBtnLoading(btn, false);
@@ -100,11 +101,7 @@ async function syncPlaidNow() {
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Syncing…'; }
 
   try {
-    const res = await fetch('/api/plaid/sync', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ user_id: currentUser.id }),
-    });
+    const res = await edgeFetch('plaid-sync', {});
     const data = await res.json();
 
     if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-rotate"></i> Sync now'; }
